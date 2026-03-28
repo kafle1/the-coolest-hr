@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     console.info(
       `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="stored"`,
     );
-    void runApplicationAutomation(applicationId)
+    await runApplicationAutomation(applicationId)
       .then(() => {
         console.info(
           `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="initial-automation-finished"`,

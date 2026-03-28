@@ -17,8 +17,10 @@ function readNumber(value: string | undefined, fallback: number) {
 }
 
 const supportedAiProviders = ["auto", "openai", "openrouter"] as const;
+const supportedGoogleCalendarAuthModes = ["service-account", "gcloud-user"] as const;
 
 type SupportedAiProvider = (typeof supportedAiProviders)[number];
+type SupportedGoogleCalendarAuthMode = (typeof supportedGoogleCalendarAuthModes)[number];
 
 function readFirstNonEmpty(...values: Array<string | undefined>) {
   return values.find((value) => typeof value === "string" && value.trim().length > 0);
@@ -123,6 +125,26 @@ function readAiProvider(value: string | undefined): SupportedAiProvider {
   return "auto";
 }
 
+function readGoogleCalendarAuthMode(
+  value: string | undefined,
+): SupportedGoogleCalendarAuthMode {
+  if (!value) {
+    return "service-account";
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (
+    supportedGoogleCalendarAuthModes.includes(
+      normalized as SupportedGoogleCalendarAuthMode,
+    )
+  ) {
+    return normalized as SupportedGoogleCalendarAuthMode;
+  }
+
+  return "service-account";
+}
+
 export const env = {
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   screeningThreshold: readNumber(process.env.SCREENING_THRESHOLD, 76),
@@ -135,6 +157,11 @@ export const env = {
   openRouterAppName: process.env.OPENROUTER_APP_NAME ?? "Niural Candidate Onboarding System",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   resendFromEmail: process.env.RESEND_FROM_EMAIL ?? "Niural Hiring <onboarding@niural.com>",
+  resendFallbackFromEmail:
+    process.env.RESEND_FALLBACK_FROM_EMAIL ?? "Niural Hiring <onboarding@resend.dev>",
+  googleCalendarAuthMode: readGoogleCalendarAuthMode(
+    process.env.GOOGLE_CALENDAR_AUTH_MODE,
+  ),
   googleServiceAccountEmail:
     readFirstNonEmpty(
       process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -146,6 +173,9 @@ export const env = {
       googleServiceAccount?.private_key,
     ) ?? "",
   googleCalendarId: process.env.GOOGLE_CALENDAR_ID ?? "",
+  gcloudConfigDir:
+    process.env.GCLOUD_CONFIG_DIR?.trim() ??
+    (process.env.HOME ? join(process.env.HOME, ".config", "gcloud") : ""),
   interviewerName: process.env.INTERVIEWER_NAME ?? "Jordan Lee",
   interviewerEmail: process.env.INTERVIEWER_EMAIL ?? "jordan.lee@example.com",
   slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",

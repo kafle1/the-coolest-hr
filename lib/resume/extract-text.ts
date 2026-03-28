@@ -225,6 +225,13 @@ async function extractPdfTextWithWorker(bytes: Buffer) {
 
         resolve(normalizeExtractedText(payload.text ?? ""));
       } catch {
+        const normalizedText = normalizeExtractedText(stdout);
+
+        if (normalizedText) {
+          resolve(normalizedText);
+          return;
+        }
+
         reject(
           new Error(
             "We couldn't read the uploaded PDF. Please upload a standard PDF or DOCX resume.",

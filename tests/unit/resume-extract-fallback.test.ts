@@ -25,7 +25,7 @@ function createMockChildProcess(options?: {
   child.stderr = new PassThrough();
   child.kill = vi.fn();
 
-  queueMicrotask(() => {
+  setTimeout(() => {
     if (options?.error) {
       child.emit("error", options.error);
       return;
