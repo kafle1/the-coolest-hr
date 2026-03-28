@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/section-card";
 import { prisma } from "@/lib/prisma/client";
 import {
   canUseSlackCandidateConnect,
-  getSlackCandidateConnectStartUrl,
+  getSlackCandidateConnectStartPath,
 } from "@/lib/slack/oauth";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ export default async function OfferSignPage({
   );
   const canContinueToSlack = canUseSlackCandidateConnect() && hasSlackConnectReady;
   const slackConnectUrl = canContinueToSlack
-    ? getSlackCandidateConnectStartUrl(offer.token)
+    ? getSlackCandidateConnectStartPath(offer.token)
     : null;
 
   return (

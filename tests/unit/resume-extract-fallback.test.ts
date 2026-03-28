@@ -5,6 +5,14 @@ import { PassThrough } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { spawnMock } = vi.hoisted(() => ({
+  spawnMock: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+  spawn: spawnMock,
+}));
+
 type MockChildProcess = EventEmitter & {
   kill(): void;
   stderr: PassThrough;
@@ -50,27 +58,19 @@ function createMockChildProcess(options?: {
 describe("extractResumeText PDF fallback order", () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.restoreAllMocks();
+    spawnMock.mockReset();
   });
 
   afterEach(() => {
-    vi.doUnmock("node:child_process");
     vi.resetModules();
-    vi.restoreAllMocks();
   });
 
   it("uses pdftotext output when the native parser is available", async () => {
-    const spawn = vi
-      .fn()
-      .mockImplementation(() =>
+    spawnMock.mockImplementation(() =>
         createMockChildProcess({
           stdout: "Candidate Example\nBuilt hiring automation",
         }),
       );
-
-    vi.doMock("node:child_process", () => ({
-      spawn,
-    }));
 
     const { extractResumeText } = await import("@/lib/resume/extract-text");
     const extractedText = await extractResumeText(
@@ -80,16 +80,15 @@ describe("extractResumeText PDF fallback order", () => {
     );
 
     expect(extractedText).toContain("Candidate Example");
-    expect(spawn).toHaveBeenCalledTimes(1);
-    expect(spawn.mock.calls[0]?.[0]).toBe("pdftotext");
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("pdftotext");
   });
 
   it("falls back to the worker parser when pdftotext is unavailable", async () => {
     const missingCommand = Object.assign(new Error("pdftotext not found"), {
       code: "ENOENT",
     });
-    const spawn = vi
-      .fn()
+    spawnMock
       .mockImplementationOnce(() =>
         createMockChildProcess({
           error: missingCommand,
@@ -103,10 +102,6 @@ describe("extractResumeText PDF fallback order", () => {
         }),
       );
 
-    vi.doMock("node:child_process", () => ({
-      spawn,
-    }));
-
     const { extractResumeText } = await import("@/lib/resume/extract-text");
     const extractedText = await extractResumeText(
       "resume.pdf",
@@ -115,8 +110,8 @@ describe("extractResumeText PDF fallback order", () => {
     );
 
     expect(extractedText).toContain("Worker extracted candidate profile");
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(spawn.mock.calls[0]?.[0]).toBe("pdftotext");
-    expect((spawn.mock.calls[1]?.[1] as string[])[0]).toContain("pdf-text-worker.mjs");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("pdftotext");
+    expect((spawnMock.mock.calls[1]?.[1] as string[])[0]).toContain("pdf-text-worker.mjs");
   });
 });

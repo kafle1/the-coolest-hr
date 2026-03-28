@@ -8,6 +8,8 @@ const SLACK_OPENID_TOKEN_URL = "https://slack.com/api/openid.connect.token";
 const SLACK_OPENID_USERINFO_URL = "https://slack.com/api/openid.connect.userInfo";
 const SLACK_OPENID_SCOPES = ["openid", "profile", "email"];
 const SLACK_CONNECT_STATE_PREFIX = "slack-connect";
+const SLACK_CONNECT_START_PATH = "/api/integrations/slack/connect";
+const SLACK_CONNECT_CALLBACK_PATH = "/api/integrations/slack/connect/callback";
 
 type SlackIdTokenPayload = {
   aud?: string | string[];
@@ -44,6 +46,33 @@ export type SlackConnectIdentity = {
 
 function normalizeUrl(value: string) {
   return value.replace(/\/$/, "");
+}
+
+function readForwardedHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() ?? "";
+}
+
+export function getSlackRequestOrigin(request: Request) {
+  const url = new URL(request.url);
+  const protocol =
+    readForwardedHeaderValue(request.headers.get("x-forwarded-proto")) ||
+    url.protocol.replace(/:$/, "");
+  const host =
+    readForwardedHeaderValue(request.headers.get("x-forwarded-host")) ||
+    readForwardedHeaderValue(request.headers.get("host")) ||
+    url.host;
+  const forwardedPort = readForwardedHeaderValue(request.headers.get("x-forwarded-port"));
+  const shouldAppendPort =
+    forwardedPort &&
+    !host.includes(":") &&
+    !(
+      (protocol === "https" && forwardedPort === "443") ||
+      (protocol === "http" && forwardedPort === "80")
+    );
+
+  return normalizeUrl(
+    `${protocol}://${shouldAppendPort ? `${host}:${forwardedPort}` : host}`,
+  );
 }
 
 function parseSlackConnectStateValue(value: string) {
@@ -93,15 +122,16 @@ export function canUseSlackCandidateConnect() {
   return Boolean(env.slackClientId && env.slackClientSecret);
 }
 
-export function getSlackOAuthRedirectUri() {
-  return `${normalizeUrl(env.appUrl)}/api/integrations/slack/connect/callback`;
+export function getSlackOAuthRedirectUri(request?: Request) {
+  const origin = request ? getSlackRequestOrigin(request) : normalizeUrl(env.appUrl);
+  return `${origin}${SLACK_CONNECT_CALLBACK_PATH}`;
 }
 
-export function getSlackCandidateConnectStartUrl(offerToken: string) {
-  const url = new URL(`${normalizeUrl(env.appUrl)}/api/integrations/slack/connect`);
+export function getSlackCandidateConnectStartPath(offerToken: string) {
+  const url = new URL(SLACK_CONNECT_START_PATH, "http://localhost");
   url.searchParams.set("offer", offerToken);
 
-  return url.toString();
+  return `${url.pathname}?${url.searchParams.toString()}`;
 }
 
 export async function createSlackConnectState(offerToken: string) {
@@ -126,11 +156,15 @@ export async function verifySlackConnectState(state: string) {
   return parseSlackConnectStateValue(value);
 }
 
-export function buildSlackConnectUrl(input: { state: string; nonce: string }) {
+export function buildSlackConnectUrl(input: {
+  state: string;
+  nonce: string;
+  redirectUri: string;
+}) {
   const url = new URL(SLACK_OPENID_AUTHORIZE_URL);
 
   url.searchParams.set("client_id", requireValue("SLACK_CLIENT_ID", env.slackClientId));
-  url.searchParams.set("redirect_uri", getSlackOAuthRedirectUri());
+  url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("response_mode", "form_post");
   url.searchParams.set("scope", SLACK_OPENID_SCOPES.join(" "));
@@ -144,7 +178,10 @@ export function buildSlackConnectUrl(input: { state: string; nonce: string }) {
   return url.toString();
 }
 
-export async function exchangeSlackConnectCode(code: string) {
+export async function exchangeSlackConnectCode(input: {
+  code: string;
+  redirectUri: string;
+}) {
   const response = await fetch(SLACK_OPENID_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -154,9 +191,9 @@ export async function exchangeSlackConnectCode(code: string) {
     body: new URLSearchParams({
       client_id: requireValue("SLACK_CLIENT_ID", env.slackClientId),
       client_secret: requireValue("SLACK_CLIENT_SECRET", env.slackClientSecret),
-      code,
+      code: input.code,
       grant_type: "authorization_code",
-      redirect_uri: getSlackOAuthRedirectUri(),
+      redirect_uri: input.redirectUri,
     }),
   });
 

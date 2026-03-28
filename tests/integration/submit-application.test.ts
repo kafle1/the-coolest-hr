@@ -24,6 +24,8 @@ vi.mock("@/lib/email/service", () => ({
   sendInterviewRescheduleAlert: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: vi.fn(),
+  sendOfferLetterEmail: vi.fn(),
+  sendOfferSignedAlert: vi.fn(),
 }));
 
 import { submitApplication } from "@/lib/applications/service";

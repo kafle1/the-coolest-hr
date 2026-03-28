@@ -45,6 +45,7 @@ vi.mock("@/lib/email/service", () => ({
   sendInterviewRescheduleAlert: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: sendSchedulingOptionsEmailMock,
+  sendOfferLetterEmail: vi.fn(),
   sendOfferSignedAlert: vi.fn(),
 }));
 

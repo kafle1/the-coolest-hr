@@ -4,12 +4,13 @@ import {
   buildSlackConnectUrl,
   canUseSlackCandidateConnect,
   createSlackConnectState,
+  getSlackOAuthRedirectUri,
+  getSlackRequestOrigin,
 } from "@/lib/slack/oauth";
 import { prisma } from "@/lib/prisma/client";
-import { env } from "@/lib/utils/env";
 
-function getOfferRedirectUrl(offerToken: string, slackState?: string) {
-  const url = new URL(`/offers/sign/${offerToken}`, env.appUrl);
+function getOfferRedirectUrl(request: Request, offerToken: string, slackState?: string) {
+  const url = new URL(`/offers/sign/${offerToken}`, getSlackRequestOrigin(request));
 
   if (slackState) {
     url.searchParams.set("slack", slackState);
@@ -38,18 +39,19 @@ export async function GET(request: Request) {
   });
 
   if (!offer) {
-    return NextResponse.redirect(getOfferRedirectUrl(offerToken, "failed"));
+    return NextResponse.redirect(getOfferRedirectUrl(request, offerToken, "failed"));
   }
 
   if (offer.status !== "SIGNED") {
-    return NextResponse.redirect(getOfferRedirectUrl(offer.token, "failed"));
+    return NextResponse.redirect(getOfferRedirectUrl(request, offer.token, "failed"));
   }
 
   if (!canUseSlackCandidateConnect()) {
-    return NextResponse.redirect(getOfferRedirectUrl(offer.token, "failed"));
+    return NextResponse.redirect(getOfferRedirectUrl(request, offer.token, "failed"));
   }
 
   const { nonce, state } = await createSlackConnectState(offer.token);
+  const redirectUri = getSlackOAuthRedirectUri(request);
 
-  return NextResponse.redirect(buildSlackConnectUrl({ state, nonce }));
+  return NextResponse.redirect(buildSlackConnectUrl({ state, nonce, redirectUri }));
 }

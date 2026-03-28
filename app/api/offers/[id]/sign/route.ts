@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { OnboardingEventType } from "@prisma/client";
 
 import { signOffer } from "@/lib/offers/service";
-import { getSlackCandidateConnectStartUrl } from "@/lib/slack/oauth";
+import { getSlackCandidateConnectStartPath } from "@/lib/slack/oauth";
 import { errorToStatusCode, getErrorMessage } from "@/lib/utils/errors";
 
 export async function POST(
@@ -38,7 +38,7 @@ export async function POST(
       (event) => event.type === OnboardingEventType.SLACK_CONNECT_READY,
     );
     const onboardingUrl = hasSlackConnectReady
-      ? getSlackCandidateConnectStartUrl(offer.token)
+      ? getSlackCandidateConnectStartPath(offer.token)
       : null;
 
     return NextResponse.json({
