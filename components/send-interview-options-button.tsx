@@ -31,7 +31,7 @@ export function SendInterviewOptionsButton({ applicationId }: { applicationId: s
                 throw new Error(payload.message ?? "Unable to send interview options.");
               }
 
-              setMessage("Scheduling options sent.");
+              setMessage("Interview options sent to the candidate.");
               router.refresh();
             } catch (submissionError) {
               setError(

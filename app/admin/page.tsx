@@ -8,7 +8,7 @@ import { SendSchedulingNudgesButton } from "@/components/send-scheduling-nudges-
 import { StatusBadge } from "@/components/status-badge";
 import { listAdminApplications, listRoles } from "@/lib/applications/service";
 import { getGoogleCalendarConnectionState } from "@/lib/calendar/oauth-config";
-import { formatDateTime } from "@/lib/utils/format";
+import { formatDateTime, formatStatusLabel } from "@/lib/utils/format";
 
 export const dynamic = "force-dynamic";
 
@@ -93,8 +93,8 @@ export default async function AdminPage({
 
       <SectionCard
         eyebrow="Admin dashboard"
-        title="One operating view for the full hiring pipeline"
-        description="Review intake, AI screening, research, scheduling, interview evidence, offers, and onboarding from a single dashboard built for fast operator decisions."
+        title="One operating view for the hiring pipeline"
+        description="Review intake, AI screening, research, scheduling, interview evidence, offers, and onboarding from one dashboard built for fast operator decisions."
       >
         <div className="mb-6">
           <div className="surface-panel flex flex-col gap-4 p-5">
@@ -141,15 +141,16 @@ export default async function AdminPage({
           </div>
           <div className="surface-panel flex flex-col justify-between gap-4 p-5">
             <div>
-              <p className="eyebrow">Automation</p>
+              <p className="eyebrow">Automation status</p>
               <p className="mt-3 text-base font-semibold">
-                New applications start processing as soon as they are submitted.
+                New applications begin processing as soon as they are submitted.
               </p>
               <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Open any candidate to watch live activity, inspect evidence, and step in only when the system raises an exception.
+                Open any candidate to inspect evidence, review exceptions, and step in only when a decision needs a human.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <LiveRefresh enabled={automationRunning} intervalMs={5000} mode="inline" />
               <SendSchedulingNudgesButton />
               <div className="ml-auto">
                 <LogoutButton />
@@ -176,7 +177,7 @@ export default async function AdminPage({
               <option value="">All statuses</option>
               {statuses.map((status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {formatStatusLabel(status)}
                 </option>
               ))}
             </select>
@@ -191,7 +192,7 @@ export default async function AdminPage({
           </label>
           <div className="flex items-end gap-3">
             <button className="button-primary" type="submit">
-              Filter
+              Apply filters
             </button>
             <Link className="button-secondary" href="/admin">
               Reset
@@ -200,15 +201,15 @@ export default async function AdminPage({
         </form>
 
         <div className="grid gap-3">
-          <div className="grid grid-cols-[1.35fr_1fr_0.95fr_0.65fr] gap-3 px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+          <div className="hidden grid-cols-[1.35fr_1fr_0.95fr_0.65fr] gap-3 px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)] md:grid">
             <span>Candidate</span>
             <span>Pipeline</span>
             <span>Submitted</span>
-            <span>AI score</span>
+            <span>Fit score</span>
           </div>
           {applications.length === 0 ? (
             <div className="surface-panel px-5 py-12 text-center text-sm text-[var(--muted)]">
-              No applications yet. Submit one from the public form to populate the pipeline.
+              No applications match the current filters yet.
             </div>
           ) : (
             applications.map((application) => (
@@ -225,6 +226,9 @@ export default async function AdminPage({
                   </p>
                 </div>
                 <div className="grid content-start gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)] md:hidden">
+                    Pipeline
+                  </p>
                   <StatusBadge value={application.status} />
                   <p className="text-sm text-[var(--muted)]">
                     {application.screeningResult
@@ -233,9 +237,15 @@ export default async function AdminPage({
                   </p>
                 </div>
                 <div className="text-sm text-[var(--muted)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)] md:hidden">
+                    Submitted
+                  </p>
                   {formatDateTime(application.submittedAt)}
                 </div>
                 <div className="text-sm font-semibold">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)] md:hidden">
+                    Fit score
+                  </p>
                   {application.aiScore ?? application.screeningResult?.score ?? "Pending"}
                 </div>
               </Link>

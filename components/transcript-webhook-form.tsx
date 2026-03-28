@@ -32,6 +32,12 @@ export function TranscriptWebhookForm({
 
   return (
     <div className={cn("grid gap-3", className ?? "surface-panel p-4")}>
+      <div>
+        <h3 className="text-base font-semibold">Transcript intake</h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Fetch a Fireflies transcript by meeting ID or paste transcript text manually to keep the interview record complete.
+        </p>
+      </div>
       <label className="grid gap-2 text-sm font-semibold">
         Fireflies meeting ID
         <input
@@ -42,7 +48,7 @@ export function TranscriptWebhookForm({
         />
       </label>
       <label className="grid gap-2 text-sm font-semibold">
-        Paste transcript or interview notes
+        Pasted transcript or interview notes
         <textarea
           className="field"
           onChange={(event) => setTranscriptText(event.target.value)}
@@ -52,8 +58,8 @@ export function TranscriptWebhookForm({
         />
       </label>
       <p className="text-sm text-[var(--muted)]">
-        Fireflies transcript fetch uses the meeting ID above. Pasted notes work too and will move
-        the candidate to interview completed as soon as the transcript is stored.
+        Fireflies fetch uses the meeting ID above. Pasted notes work too and will move the candidate
+        to interview completed as soon as the transcript is stored.
       </p>
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}

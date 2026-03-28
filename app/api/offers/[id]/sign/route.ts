@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { OnboardingEventType } from "@prisma/client";
 
 import { signOffer } from "@/lib/offers/service";
-import { getSlackCandidateConnectStartPath } from "@/lib/slack/oauth";
+import {
+  getSlackCandidateConnectSetupError,
+  getSlackCandidateConnectStartPath,
+} from "@/lib/slack/oauth";
 import { errorToStatusCode, getErrorMessage } from "@/lib/utils/errors";
 
 export async function POST(
@@ -37,16 +40,24 @@ export async function POST(
     const hasSlackConnectReady = offer.application.onboardingEvents.some(
       (event) => event.type === OnboardingEventType.SLACK_CONNECT_READY,
     );
+    const slackSetupError = hasSlackConnectReady
+      ? getSlackCandidateConnectSetupError(request)
+      : null;
     const onboardingUrl = hasSlackConnectReady
+      && !slackSetupError
       ? getSlackCandidateConnectStartPath(offer.token)
       : null;
+    const message = onboardingUrl
+      ? "Offer signed successfully. Redirecting to Slack onboarding..."
+      : slackSetupError
+        ? "Offer signed successfully. Slack onboarding is ready, but it needs a public HTTPS callback before it can continue."
+        : "Offer signed successfully.";
 
     return NextResponse.json({
       ok: true,
-      message: onboardingUrl
-        ? "Offer signed successfully. Redirecting to Slack onboarding..."
-        : "Offer signed successfully.",
+      message,
       onboardingUrl,
+      slackSetupError,
       offer,
     });
   } catch (error) {

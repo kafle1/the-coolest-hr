@@ -2,8 +2,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils/cn";
 
-function PublicHeader() {
+const publicLinks = [
+  { href: "/", label: "Open roles" },
+  { href: "/apply", label: "Apply" },
+  { href: "/candidates/status", label: "Application tracker" },
+];
+
+function NavLink({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn("button-ghost", active && "button-ghost-active")}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function PublicHeader({ pathname }: { pathname: string }) {
   return (
     <header className="card mb-8 flex flex-col gap-5 rounded-[30px] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
@@ -14,25 +41,24 @@ function PublicHeader() {
           Niural Careers
         </Link>
         <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
-          Explore open roles, apply online, and check your application status.
+          Browse open roles, submit one clear application, and track progress without chasing updates.
         </p>
       </div>
       <nav className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--ink)]">
-        <Link href="/" className="button-ghost">
-          Careers
-        </Link>
-        <Link href="/apply" className="button-ghost">
-          Apply
-        </Link>
-        <Link href="/candidates/status" className="button-ghost">
-          Check Status
-        </Link>
+        {publicLinks.map((link) => (
+          <NavLink
+            key={link.href}
+            href={link.href}
+            label={link.label}
+            active={pathname === link.href}
+          />
+        ))}
       </nav>
     </header>
   );
 }
 
-function AdminHeader() {
+function AdminHeader({ pathname }: { pathname: string }) {
   return (
     <header className="card mb-8 flex flex-col gap-5 rounded-[30px] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
@@ -43,15 +69,13 @@ function AdminHeader() {
           Niural Hiring OS
         </Link>
         <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
-          Internal workspace for recruiting, scheduling, offers, and onboarding.
+          Internal workspace for intake, scheduling, offers, and onboarding.
         </p>
       </div>
       <nav className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--ink)]">
-        <Link href="/admin" className="button-ghost">
-          Dashboard
-        </Link>
+        <NavLink href="/admin" label="Dashboard" active={pathname === "/admin"} />
         <Link href="/" className="button-secondary">
-          View public site
+          View candidate site
         </Link>
       </nav>
     </header>
@@ -62,5 +86,5 @@ export function SiteHeader() {
   const pathname = usePathname();
   const isAdminRoute = pathname.startsWith("/admin");
 
-  return isAdminRoute ? <AdminHeader /> : <PublicHeader />;
+  return isAdminRoute ? <AdminHeader pathname={pathname} /> : <PublicHeader pathname={pathname} />;
 }

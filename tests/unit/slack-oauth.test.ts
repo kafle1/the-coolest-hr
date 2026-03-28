@@ -15,6 +15,7 @@ describe("slack oauth helpers", () => {
       SESSION_SIGNING_SECRET: "test-session-secret",
       SLACK_CLIENT_ID: "123.456",
       SLACK_CLIENT_SECRET: "slack-secret",
+      SLACK_REDIRECT_URI: "",
       SLACK_TEAM_ID: "T12345",
     };
   });
@@ -81,6 +82,26 @@ describe("slack oauth helpers", () => {
     expect(getSlackOAuthRedirectUri(request)).toBe(
       "https://preview.example.com/api/integrations/slack/connect/callback",
     );
+  });
+
+  it("prefers the explicit redirect override and appends the callback path", async () => {
+    process.env.SLACK_REDIRECT_URI = "https://candidate-flow.ngrok-free.app";
+
+    const { getSlackOAuthRedirectUri } = await import("@/lib/slack/oauth");
+
+    expect(getSlackOAuthRedirectUri()).toBe(
+      "https://candidate-flow.ngrok-free.app/api/integrations/slack/connect/callback",
+    );
+  });
+
+  it("reports a setup error for localhost Slack callbacks", async () => {
+    const { getSlackCandidateConnectSetupError } = await import("@/lib/slack/oauth");
+
+    expect(
+      getSlackCandidateConnectSetupError(
+        new Request("http://localhost:3000/api/integrations/slack/connect"),
+      ),
+    ).toContain("requires an HTTPS callback");
   });
 
   it("reuses the same redirect URI during token exchange", async () => {

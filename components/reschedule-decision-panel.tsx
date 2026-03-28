@@ -72,6 +72,9 @@ export function RescheduleDecisionPanel({
         <p className="font-semibold">Candidate reschedule request</p>
         <p className="mt-2 text-[var(--muted)]">{requestNote}</p>
       </div>
+      <p className="text-sm text-[var(--muted)]">
+        Approve a new time directly if the interviewer has already agreed, or send a fresh set of options back to the candidate.
+      </p>
 
       <label className="grid gap-2 text-sm font-semibold">
         Approved interview time
@@ -90,7 +93,7 @@ export function RescheduleDecisionPanel({
           onClick={() => runAction("approve-time")}
           type="button"
         >
-          {isPending ? "Scheduling..." : "Schedule approved time directly"}
+          {isPending ? "Scheduling..." : "Schedule approved time"}
         </button>
         <button
           className="button-secondary"

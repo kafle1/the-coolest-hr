@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 
 import {
   buildSlackConnectUrl,
-  canUseSlackCandidateConnect,
+  canStartSlackCandidateConnect,
   createSlackConnectState,
+  getSlackCandidateConnectSetupError,
   getSlackOAuthRedirectUri,
   getSlackRequestOrigin,
 } from "@/lib/slack/oauth";
@@ -46,8 +47,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(getOfferRedirectUrl(request, offer.token, "failed"));
   }
 
-  if (!canUseSlackCandidateConnect()) {
-    return NextResponse.redirect(getOfferRedirectUrl(request, offer.token, "failed"));
+  if (!canStartSlackCandidateConnect(request)) {
+    const setupError = getSlackCandidateConnectSetupError(request);
+
+    console.warn(
+      `[hiring-os] ${new Date().toISOString()} offer=${offer.token} step="Slack connect start" ${
+        setupError ?? "Slack candidate connect is not ready."
+      }`,
+    );
+
+    return NextResponse.redirect(getOfferRedirectUrl(request, offer.token, "setup"));
   }
 
   const { nonce, state } = await createSlackConnectState(offer.token);

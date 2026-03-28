@@ -28,6 +28,7 @@ describe("GET /api/integrations/slack/connect", () => {
       SESSION_SIGNING_SECRET: "test-session-secret",
       SLACK_CLIENT_ID: "123.456",
       SLACK_CLIENT_SECRET: "slack-secret",
+      SLACK_REDIRECT_URI: "",
       SLACK_TEAM_ID: "T12345",
     };
   });
@@ -85,6 +86,45 @@ describe("GET /api/integrations/slack/connect", () => {
 
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
       "https://hiring.example.com/api/integrations/slack/connect/callback",
+    );
+  });
+
+  it("prefers the explicit redirect override when a tunnel callback is configured", async () => {
+    process.env.SLACK_REDIRECT_URI = "https://candidate-flow.ngrok-free.app";
+    findUniqueMock.mockResolvedValue({
+      status: "SIGNED",
+      token: "offer-token-123",
+    });
+
+    const { GET } = await import("@/app/api/integrations/slack/connect/route");
+    const response = await GET(
+      new Request("https://preview.example.com/api/integrations/slack/connect?offer=offer-token-123"),
+    );
+    const location = response.headers.get("location");
+
+    expect(location).toBeTruthy();
+
+    const redirectUrl = new URL(location ?? "");
+
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+      "https://candidate-flow.ngrok-free.app/api/integrations/slack/connect/callback",
+    );
+  });
+
+  it("redirects back for setup when a localhost callback would be sent to Slack", async () => {
+    findUniqueMock.mockResolvedValue({
+      status: "SIGNED",
+      token: "offer-token-123",
+    });
+
+    const { GET } = await import("@/app/api/integrations/slack/connect/route");
+    const response = await GET(
+      new Request("http://localhost:3000/api/integrations/slack/connect?offer=offer-token-123"),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/offers/sign/offer-token-123?slack=setup",
     );
   });
 

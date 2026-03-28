@@ -31,20 +31,47 @@ export function OfferGenerationForm({
 
   return (
     <div className={cn("grid gap-3", className ?? "surface-panel p-4")}>
-      <div className="grid gap-3 md:grid-cols-2">
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value }))} placeholder="Job title" value={form.jobTitle} />
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} type="date" value={form.startDate} />
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Base salary" value={form.baseSalary} />
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, reportingManager: event.target.value }))} placeholder="Reporting manager" value={form.reportingManager} />
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, equityBonus: event.target.value }))} placeholder="Equity or bonus" value={form.equityBonus} />
-        <input className="field" onChange={(event) => setForm((current) => ({ ...current, compensationNotes: event.target.value }))} placeholder="Compensation notes" value={form.compensationNotes} />
+      <div>
+        <h3 className="text-base font-semibold">Offer inputs</h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Confirm the final role, compensation, manager, and any custom terms before generating the letter.
+        </p>
       </div>
-      <textarea
-        className="field min-h-24"
-        onChange={(event) => setForm((current) => ({ ...current, customTerms: event.target.value }))}
-        placeholder="Custom terms or candidate-specific conditions"
-        value={form.customTerms}
-      />
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2 text-sm font-semibold">
+          Job title
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value }))} placeholder="Job title" value={form.jobTitle} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Start date
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} type="date" value={form.startDate} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Base salary
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Base salary" value={form.baseSalary} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Reporting manager
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, reportingManager: event.target.value }))} placeholder="Reporting manager" value={form.reportingManager} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Equity or bonus
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, equityBonus: event.target.value }))} placeholder="Optional equity or bonus details" value={form.equityBonus} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          Compensation notes
+          <input className="field" onChange={(event) => setForm((current) => ({ ...current, compensationNotes: event.target.value }))} placeholder="Optional compensation notes" value={form.compensationNotes} />
+        </label>
+      </div>
+      <label className="grid gap-2 text-sm font-semibold">
+        Custom terms
+        <textarea
+          className="field min-h-24"
+          onChange={(event) => setForm((current) => ({ ...current, customTerms: event.target.value }))}
+          placeholder="Candidate-specific terms, conditions, or notes"
+          value={form.customTerms}
+        />
+      </label>
       <label className="flex items-center gap-3 text-sm font-semibold">
         <input
           checked={form.sendNow}
@@ -92,7 +119,7 @@ export function OfferGenerationForm({
         }}
         type="button"
       >
-        {isPending ? "Generating..." : "Generate offer"}
+        {isPending ? "Generating..." : form.sendNow ? "Generate and send offer" : "Generate offer draft"}
       </button>
     </div>
   );

@@ -178,6 +178,7 @@ export const env = {
   interviewerEmail: process.env.INTERVIEWER_EMAIL ?? "jordan.lee@example.com",
   slackClientId: process.env.SLACK_CLIENT_ID?.trim() ?? "",
   slackClientSecret: process.env.SLACK_CLIENT_SECRET?.trim() ?? "",
+  slackRedirectUri: process.env.SLACK_REDIRECT_URI?.trim() ?? "",
   slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",
   slackAdminUserToken: process.env.SLACK_ADMIN_USER_TOKEN ?? "",
   slackSigningSecret: process.env.SLACK_SIGNING_SECRET ?? "",

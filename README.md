@@ -39,6 +39,7 @@ Working prototype for the Niural AI Product Operator take-home. The app covers t
 ```bash
 cp .env.example .env
 # Edit .env and set OPENROUTER_API_KEY or OPENAI_API_KEY
+# Also set ADMIN_EMAIL, ADMIN_PASSWORD, and SESSION_SIGNING_SECRET for the admin workspace
 ```
 
 2. Make sure PostgreSQL is available at the `DATABASE_URL` from `.env`.
@@ -60,36 +61,91 @@ pnpm dev
 
 5. Open [http://localhost:3000](http://localhost:3000).
 
+## Demo reset
+
+If your local database has been altered by tests or manual exploration, use one of these before recording the walkthrough:
+
+```bash
+pnpm db:seed
+```
+
+If you need a completely clean development database with only the seeded roles, use:
+
+```bash
+pnpm db:reset
+```
+
+`pnpm db:reset` is destructive and should only ever be run against a local development database.
+
 ## Environment variables
 
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `NEXT_PUBLIC_APP_URL` | Yes | Canonical app URL used for links, callbacks, and public flows |
 | `AI_PROVIDER` | No | `auto` by default; prefers OpenRouter when `OPENROUTER_API_KEY` is set |
 | `OPENROUTER_API_KEY` | No | Powers all AI features through OpenRouter |
 | `OPENROUTER_MODEL` | No | Defaults to `openai/gpt-4.1-mini` |
+| `OPENROUTER_SITE_URL` | No | Optional OpenRouter attribution URL |
+| `OPENROUTER_APP_NAME` | No | Optional OpenRouter attribution name |
 | `OPENAI_API_KEY` | No | Optional direct OpenAI fallback |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4.1-mini` |
 | `SCREENING_THRESHOLD` | No | Minimum AI score to auto-shortlist (default: 76) |
 | `RESEND_API_KEY` | No | Sends real emails; writes to DB when missing |
+| `RESEND_FROM_EMAIL` | No | Sender used for transactional emails |
+| `GOOGLE_CALENDAR_AUTH_MODE` | No | `oauth-refresh` or `service-account` |
+| `GOOGLE_OAUTH_CLIENT_ID` | No | Google Calendar OAuth client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | No | Google Calendar OAuth client secret |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | No | Refresh token for real interviewer calendar access |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | No | Google Calendar integration |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | No | Google Calendar integration |
 | `GOOGLE_CALENDAR_ID` | No | Google Calendar integration |
+| `INTERVIEWER_NAME` | No | Default interviewer label in scheduling and offers |
+| `INTERVIEWER_EMAIL` | No | Default interviewer email for notifications |
 | `SLACK_BOT_TOKEN` | No | Slack DMs and notifications |
 | `SLACK_ADMIN_USER_TOKEN` | No | Slack workspace invites |
+| `SLACK_CLIENT_ID` | No | Slack candidate connect flow |
+| `SLACK_CLIENT_SECRET` | No | Slack candidate connect flow |
+| `SLACK_REDIRECT_URI` | No | Explicit HTTPS callback for local Slack candidate connect flows |
 | `SLACK_SIGNING_SECRET` | No | Verifies Slack webhook requests |
 | `SLACK_TEAM_ID` | No | Required for real Slack invites |
 | `SLACK_HR_CHANNEL_ID` | No | HR notification channel |
 | `SLACK_DEFAULT_CHANNEL_IDS` | No | Auto-join channels for new hires |
 | `FIREFLIES_API_KEY` | No | Fetches transcripts; direct text paste when missing |
-| `ADMIN_EMAIL` | No | Admin login email (default: `admin@niural.com`) |
-| `ADMIN_PASSWORD` | No | Admin login password (default: `test_admin_pwd`) |
+| `ADMIN_EMAIL` | Yes | Admin login email for the protected workspace |
+| `ADMIN_PASSWORD` | Yes | Admin login password for the protected workspace |
+| `SESSION_SIGNING_SECRET` | Yes | HMAC secret for admin session cookies |
+| `PLAYWRIGHT_PORT` | No | Local Playwright test server port |
+| `PLAYWRIGHT_BASE_URL` | No | Local Playwright base URL |
 
 When optional credentials are missing, the service gracefully degrades:
 - **Calendar**: manages slots in Postgres without creating Google Calendar events
 - **Email**: writes emails to the database for admin visibility
 - **Slack**: logs actions to console and records events in the database
 - **Fireflies**: accepts pasted transcript text directly
+
+## Slack local tunnel
+
+Slack candidate connect does not accept a plain `http://localhost:3000` callback in this project anymore. In local development, start the app, expose it through an HTTPS tunnel, and configure the exact same callback URL in your Slack app:
+
+```bash
+pnpm dev
+pnpm tunnel:ngrok
+```
+
+Then set only the Slack callback override:
+
+```bash
+SLACK_REDIRECT_URI="https://your-public-host/api/integrations/slack/connect/callback"
+```
+
+Keep `NEXT_PUBLIC_APP_URL` pointed at your normal local app URL unless you intentionally want every generated candidate link to use the public host. That keeps scheduling and signing links stable during local development while still giving Slack the HTTPS callback it requires.
+
+Add that same `SLACK_REDIRECT_URI` value to the Slack app redirect URLs. If `ngrok` is not configured locally yet, install your authtoken first. Any HTTPS tunnel works; the app now prefers `SLACK_REDIRECT_URI` whenever it is set. A no-account fallback is also available:
+
+```bash
+pnpm tunnel:localhost-run
+```
 
 ## Walkthrough script
 
@@ -158,7 +214,7 @@ Chosen for v1 because transcript retrieval by meeting ID is straightforward to m
 
 ### Slack (optional)
 
-Real mode uses Slack admin scopes for invites with `team_id` and channel assignment. Handles `team_join` events for onboarding completion with email fallback lookup. When credentials are missing, events are logged and recorded locally.
+Real mode uses Slack admin scopes for invites with `team_id` and channel assignment. If `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` are also configured, the candidate-facing Slack connect flow can complete onboarding on the signed-offer page. `team_join` events finalize onboarding with email fallback lookup. When credentials are missing, events are logged and recorded locally.
 
 ### Resend (optional)
 
@@ -209,11 +265,21 @@ pnpm build
 pnpm e2e
 ```
 
+`pnpm e2e` requires a local environment that allows Playwright to launch a browser. In restricted sandboxes, browser launch can fail even when the application itself builds and runs correctly.
+
+## Submission handoff
+
+1. Run `pnpm db:seed` or `pnpm db:reset` on your local development database so the walkthrough starts from the intended demo state.
+2. Start the app locally or deploy it, then record the 10-15 minute Loom using the walkthrough script above.
+3. Share the repo link and Loom URL by email with the subject `AI Product Operator Assignment- [Your Name]`.
+
 ## Submission checklist
 
 - [x] Working local prototype
 - [x] README with architecture, integration choices, edge cases, and trade-offs
 - [x] Edge case documentation (`EDGE_CASES.md`)
 - [x] System explanation with trade-offs (`SYSTEM_EXPLANATION.md`)
-- [x] Verification commands passing locally
+- [x] Core verification (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`)
+- [x] Demo database returned to the 3-role seeded baseline
 - [ ] Loom walkthrough (use the walkthrough script above)
+- [ ] Submission email sent with repo link and Loom URL

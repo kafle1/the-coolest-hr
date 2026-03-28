@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils/cn";
+import { formatStatusLabel } from "@/lib/utils/format";
 
 export function OverrideForm({
   applicationId,
@@ -31,7 +32,7 @@ export function OverrideForm({
   return (
     <div className={cn("grid gap-3", className ?? "surface-panel p-4")}>
       <p className="text-sm text-[var(--muted)]">
-        Manual override targets are limited to valid decision-state moves from {currentStatus}.
+        Manual override targets are limited to valid state changes from {formatStatusLabel(currentStatus)}.
       </p>
       <div className="grid gap-3 md:grid-cols-[180px_1fr]">
         <select
@@ -45,7 +46,7 @@ export function OverrideForm({
           ) : null}
           {targets.map((target) => (
             <option key={target} value={target}>
-              {target}
+              {formatStatusLabel(target)}
             </option>
           ))}
         </select>

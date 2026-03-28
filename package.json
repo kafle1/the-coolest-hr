@@ -18,7 +18,9 @@
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts"
+    "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
+    "tunnel:ngrok": "ngrok http 3000",
+    "tunnel:localhost-run": "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 80:localhost:3000 nokey@localhost.run"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

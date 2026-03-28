@@ -10,6 +10,8 @@ const SLACK_OPENID_SCOPES = ["openid", "profile", "email"];
 const SLACK_CONNECT_STATE_PREFIX = "slack-connect";
 const SLACK_CONNECT_START_PATH = "/api/integrations/slack/connect";
 const SLACK_CONNECT_CALLBACK_PATH = "/api/integrations/slack/connect/callback";
+const SLACK_TUNNEL_HELP_TEXT =
+  "Set SLACK_REDIRECT_URI to your HTTPS tunnel callback URL ending in /api/integrations/slack/connect/callback.";
 
 type SlackIdTokenPayload = {
   aud?: string | string[];
@@ -46,6 +48,55 @@ export type SlackConnectIdentity = {
 
 function normalizeUrl(value: string) {
   return value.replace(/\/$/, "");
+}
+
+function isLocalSlackHost(hostname: string) {
+  const normalizedHostname = hostname.trim().toLowerCase();
+
+  return (
+    normalizedHostname === "localhost" ||
+    normalizedHostname === "127.0.0.1" ||
+    normalizedHostname === "::1" ||
+    normalizedHostname === "[::1]" ||
+    normalizedHostname.endsWith(".local")
+  );
+}
+
+function normalizeSlackRedirectUriOverride(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("SLACK_REDIRECT_URI must be an absolute URL.");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("SLACK_REDIRECT_URI must use http or https.");
+  }
+
+  url.hash = "";
+  url.search = "";
+
+  const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (normalizedPath === "/") {
+    url.pathname = SLACK_CONNECT_CALLBACK_PATH;
+    return url.toString();
+  }
+
+  if (normalizedPath !== SLACK_CONNECT_CALLBACK_PATH) {
+    throw new Error(
+      `SLACK_REDIRECT_URI must point to ${SLACK_CONNECT_CALLBACK_PATH}.`,
+    );
+  }
+
+  url.pathname = SLACK_CONNECT_CALLBACK_PATH;
+  return url.toString();
 }
 
 function readForwardedHeaderValue(value: string | null) {
@@ -123,8 +174,44 @@ export function canUseSlackCandidateConnect() {
 }
 
 export function getSlackOAuthRedirectUri(request?: Request) {
+  const redirectUriOverride = normalizeSlackRedirectUriOverride(env.slackRedirectUri);
+
+  if (redirectUriOverride) {
+    return redirectUriOverride;
+  }
+
   const origin = request ? getSlackRequestOrigin(request) : normalizeUrl(env.appUrl);
   return `${origin}${SLACK_CONNECT_CALLBACK_PATH}`;
+}
+
+export function getSlackCandidateConnectSetupError(request?: Request) {
+  if (!canUseSlackCandidateConnect()) {
+    return "Slack candidate connect credentials are missing.";
+  }
+
+  let redirectUri: string;
+
+  try {
+    redirectUri = getSlackOAuthRedirectUri(request);
+  } catch (error) {
+    return error instanceof Error ? error.message : "Slack redirect URI is invalid.";
+  }
+
+  const parsedRedirectUri = new URL(redirectUri);
+
+  if (parsedRedirectUri.protocol !== "https:") {
+    return `Slack candidate connect requires an HTTPS callback. ${SLACK_TUNNEL_HELP_TEXT}`;
+  }
+
+  if (isLocalSlackHost(parsedRedirectUri.hostname)) {
+    return `Slack candidate connect cannot use a localhost callback. ${SLACK_TUNNEL_HELP_TEXT}`;
+  }
+
+  return null;
+}
+
+export function canStartSlackCandidateConnect(request?: Request) {
+  return getSlackCandidateConnectSetupError(request) === null;
 }
 
 export function getSlackCandidateConnectStartPath(offerToken: string) {

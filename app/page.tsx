@@ -18,13 +18,14 @@ export default async function Home() {
   const roles = await getOpenRoles();
   const openRoleCount = roles.length;
   const teamCount = new Set(roles.map((role) => role.team)).size;
+  const hasOpenRoles = roles.length > 0;
 
   return (
     <div className="grid gap-8">
       <SectionCard
         eyebrow="Niural Careers"
-        title="Join a team building ambitious products with care"
-        description="Explore open roles, learn what each team is working on, and submit your application in a few minutes."
+        title="Join a team building ambitious products with clarity and care"
+        description="Review the open roles, understand what each team is hiring for, and apply through one streamlined candidate flow."
       >
         <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
@@ -43,14 +44,16 @@ export default async function Home() {
               </div>
             </div>
             <p className="mt-6 max-w-3xl text-[15px] leading-7 text-[var(--muted)]">
-              We want the application experience to feel clear, respectful, and fast. You can review the role details, apply online, and come back anytime to check where things stand.
+              The experience is designed to stay clear and responsive from the first click through onboarding. You can read full job descriptions, apply in a few minutes, and come back anytime to check progress.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/apply" className="button-primary">
-                Apply now
-              </Link>
+              {hasOpenRoles ? (
+                <Link href="/apply" className="button-primary">
+                  Start an application
+                </Link>
+              ) : null}
               <Link href="/candidates/status" className="button-secondary">
-                Check application status
+                Track an application
               </Link>
             </div>
           </div>
@@ -75,45 +78,59 @@ export default async function Home() {
 
       <SectionCard
         eyebrow="Open roles"
-        title="Current job openings"
-        description="Each listing includes the role overview, team, location, experience level, responsibilities, and requirements."
+        title="Current openings"
+        description="Each role includes the team, location, level, core scope, responsibilities, and requirements."
       >
-        <div className="grid gap-4 lg:grid-cols-3">
-          {roles.map((role) => (
-            <article key={role.id} className="surface-panel p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="eyebrow">{role.team}</p>
-                  <h3 className="mt-2 text-xl font-semibold tracking-tight">{role.title}</h3>
+        {hasOpenRoles ? (
+          <div className="grid gap-4 lg:grid-cols-3">
+            {roles.map((role) => (
+              <article key={role.id} className="surface-panel p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="eyebrow">{role.team}</p>
+                    <h3 className="mt-2 text-xl font-semibold tracking-tight">{role.title}</h3>
+                  </div>
+                  <StatusBadge value={role.status} />
                 </div>
-                <StatusBadge value={role.status} />
-              </div>
-              <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{role.summary}</p>
-              <dl className="mt-5 grid gap-2 text-sm text-[var(--ink)]">
-                <div className="flex justify-between gap-3 border-b divider pb-2">
-                  <dt className="text-[var(--muted)]">Location</dt>
-                  <dd>{role.location}</dd>
+                <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{role.summary}</p>
+                <dl className="mt-5 grid gap-2 text-sm text-[var(--ink)]">
+                  <div className="flex justify-between gap-3 border-b divider pb-2">
+                    <dt className="text-[var(--muted)]">Location</dt>
+                    <dd>{role.location}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3 border-b divider pb-2">
+                    <dt className="text-[var(--muted)]">Work style</dt>
+                    <dd>{role.remoteStatus}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-[var(--muted)]">Level</dt>
+                    <dd>{role.experienceLevel}</dd>
+                  </div>
+                </dl>
+                <div className="mt-5 flex gap-3">
+                  <Link href={`/roles/${role.slug}`} className="button-secondary">
+                    View details
+                  </Link>
+                  <Link href={`/apply?role=${role.id}`} className="button-primary">
+                    Apply
+                  </Link>
                 </div>
-                <div className="flex justify-between gap-3 border-b divider pb-2">
-                  <dt className="text-[var(--muted)]">Work mode</dt>
-                  <dd>{role.remoteStatus}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-[var(--muted)]">Level</dt>
-                  <dd>{role.experienceLevel}</dd>
-                </div>
-              </dl>
-              <div className="mt-5 flex gap-3">
-                <Link href={`/roles/${role.slug}`} className="button-secondary">
-                  View role
-                </Link>
-                <Link href={`/apply?role=${role.id}`} className="button-primary">
-                  Apply
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="surface-panel px-6 py-12 text-center">
+            <h3 className="text-lg font-semibold">No roles are open right now</h3>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              The careers page updates automatically when a role reopens. You can still use the application tracker if you already applied.
+            </p>
+            <div className="mt-5">
+              <Link href="/candidates/status" className="button-secondary">
+                Open the tracker
+              </Link>
+            </div>
+          </div>
+        )}
       </SectionCard>
     </div>
   );

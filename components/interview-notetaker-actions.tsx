@@ -27,6 +27,9 @@ export function InterviewNotetakerActions({
 
   return (
     <div className="grid gap-3">
+      <p className="text-sm text-[var(--muted)]">
+        Use these controls to trigger the Fireflies notetaker or refresh its current sync state.
+      </p>
       <div className="flex flex-wrap gap-3">
         <button
           className="button-secondary w-full sm:w-fit"
@@ -49,10 +52,10 @@ export function InterviewNotetakerActions({
                 );
               }
             });
-          }}
-          type="button"
-        >
-          {isPending ? "Starting..." : "Start Fireflies now"}
+        }}
+        type="button"
+      >
+          {isPending ? "Starting..." : "Start Fireflies notetaker"}
         </button>
 
         <button
@@ -76,10 +79,10 @@ export function InterviewNotetakerActions({
                 );
               }
             });
-          }}
-          type="button"
-        >
-          {isPending ? "Checking..." : "Check Fireflies status"}
+        }}
+        type="button"
+      >
+          {isPending ? "Checking..." : "Refresh Fireflies status"}
         </button>
       </div>
 

@@ -12,7 +12,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "pnpm start:e2e",
+    command: `pnpm exec next start --hostname ${host} --port ${port}`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,

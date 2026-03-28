@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 
@@ -69,10 +70,10 @@ function LoginForm() {
             </svg>
           </div>
           <h1 className="font-[family-name:var(--font-heading)] text-2xl font-semibold tracking-tight">
-            Admin Login
+            Sign in to the hiring workspace
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Sign in to access the hiring dashboard
+            Use your admin credentials to review candidates, coordinate interviews, and manage onboarding.
           </p>
         </div>
 
@@ -110,13 +111,18 @@ function LoginForm() {
             />
           </label>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="button-primary mt-2"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="button-primary"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+            <Link href="/" className="button-secondary">
+              Back to candidate site
+            </Link>
+          </div>
         </form>
       </div>
     </div>
@@ -129,7 +135,7 @@ export default function AdminLoginPage() {
       fallback={
         <div className="mx-auto max-w-md">
           <div className="card rounded-[30px] p-8 text-center text-sm text-[var(--muted)]">
-            Loading…
+            Loading...
           </div>
         </div>
       }

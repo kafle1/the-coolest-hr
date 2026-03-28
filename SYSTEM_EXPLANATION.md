@@ -59,7 +59,7 @@ After offer signing and Slack join, AI generates a personalized onboarding DM wi
 | Decision | Upside | Downside |
 |---|---|---|
 | Custom signing UI instead of DocuSign | Fully functional without third-party dependency | No legal audit trail for production use |
-| Service-account calendar access | No OAuth consent flow needed | Cannot calendar-check on behalf of the candidate |
+| Refresh-token calendar access with service-account fallback | Real interviewer availability and invite handling when configured | Requires one-time Google OAuth setup in development |
 | File-system resume storage | No cloud dependency; path traversal protection | Not suitable for multi-instance deployment without shared storage |
 | AI provider required, other services optional | Core AI features always work; optional services degrade gracefully | Development still requires one live AI API key |
 | Direct transcript text input fallback | Works without Fireflies API key | No automated meeting recording |
@@ -71,5 +71,5 @@ After offer signing and Slack join, AI generates a personalized onboarding DM wi
 3. **Production-grade auth and RBAC** for the admin dashboard instead of single-admin env credentials
 4. **Cron-based scheduling** for hold expiration and nudge processing
 5. **Webhook verification** for Fireflies (currently modeled but not cryptographically verified)
-6. **Rate limiting** on the application submission endpoint
+6. **Distributed rate limiting** instead of the current in-memory limiter
 7. **Background job queue** (e.g., Inngest, BullMQ) to decouple AI screening from the request cycle
