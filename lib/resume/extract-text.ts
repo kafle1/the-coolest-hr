@@ -207,7 +207,7 @@ async function extractPdfTextWithWorker(bytes: Buffer) {
       settled = true;
       cleanup();
 
-      if (code !== 0) {
+      if ((code ?? 0) !== 0) {
         reject(buildPdfExtractionError(stderr));
         return;
       }

@@ -15,6 +15,7 @@ import { getAiService } from "@/lib/ai/service";
 import { getCalendarService } from "@/lib/calendar/service";
 import {
   sendApplicationConfirmation,
+  sendInterviewConfirmationEmail,
   sendInterviewRescheduleAlert,
   sendSchedulingNudgeEmail,
   sendSchedulingOptionsEmail,
@@ -30,7 +31,7 @@ import {
   transitionApplicationStatus,
 } from "@/lib/status/transitions";
 import { deleteStoredResume, persistResume } from "@/lib/storage/files";
-import { env } from "@/lib/utils/env";
+import { env, requireValue } from "@/lib/utils/env";
 import { badRequest, conflict, notFound } from "@/lib/utils/errors";
 
 const optionalUrlSchema = z
@@ -107,6 +108,11 @@ const offerableStatuses: ApplicationStatus[] = [
   ApplicationStatus.OFFER_SENT,
 ];
 
+type SubmitApplicationResult = {
+  applicationId: string;
+  confirmationEmailError: string | null;
+};
+
 function writeApplicationLog(
   applicationId: string,
   actorLabel: string,
@@ -139,11 +145,39 @@ async function recordAutomationActivity(
   });
 }
 
+async function recordIntegrationActivity(
+  applicationId: string,
+  actorLabel: string,
+  note: string,
+  level: "info" | "error" = "info",
+) {
+  writeApplicationLog(applicationId, actorLabel, note, level);
+
+  await appendStatusNote({
+    applicationId,
+    actorType: ActorType.INTEGRATION,
+    actorLabel,
+    note,
+  });
+}
+
 function isDuplicateApplicationError(error: unknown) {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002"
   );
+}
+
+function summarizeConfirmationEmailFailure(message: string) {
+  if (message.includes("You can only send testing emails to your own email address")) {
+    return [
+      "Confirmation email could not be delivered because Resend is still in testing mode",
+      `for ${env.resendFromEmail}.`,
+      "Verify a sending domain in Resend to email other recipients.",
+    ].join(" ");
+  }
+
+  return message;
 }
 
 function buildConfirmedHoldOverlapWhere(startsAt: Date, endsAt: Date) {
@@ -187,6 +221,34 @@ export function canGenerateOfferStatus(status: ApplicationStatus) {
 
 function canBuildResearchStatus(status: ApplicationStatus) {
   return researchableStatuses.includes(status);
+}
+
+function getRequiredInterviewerCalendarId() {
+  return requireValue("GOOGLE_CALENDAR_ID", env.googleCalendarId);
+}
+
+async function notifyConfirmedInterview(input: {
+  applicationId: string;
+  candidateEmail: string;
+  candidateName: string;
+  interviewerEmail: string;
+  interviewerName: string;
+  roleTitle: string;
+  startsAt: Date;
+  endsAt: Date;
+  meetingUrl: string;
+  googleEventId?: string | null;
+}) {
+  try {
+    await sendInterviewConfirmationEmail(input);
+  } catch (error) {
+    await appendStatusNote({
+      applicationId: input.applicationId,
+      actorType: ActorType.SYSTEM,
+      actorLabel: "Scheduling email",
+      note: `Interview was confirmed, but the confirmation email failed: ${error instanceof Error ? error.message : "Unknown error."}`,
+    });
+  }
 }
 
 const applicationDetailInclude = {
@@ -281,10 +343,14 @@ export async function listAdminApplications(filters: {
 }
 
 export async function getCandidateDetail(applicationId: string) {
-  const detail = await prisma.application.findUniqueOrThrow({
+  const detail = await prisma.application.findUnique({
     where: { id: applicationId },
     include: applicationDetailInclude,
   });
+
+  if (!detail) {
+    throw notFound("Application was not found.", "application_not_found");
+  }
 
   if (!detail.interview?.googleEventId) {
     return detail;
@@ -292,10 +358,16 @@ export async function getCandidateDetail(applicationId: string) {
 
   await syncInterviewAttendance(detail.id);
 
-  return prisma.application.findUniqueOrThrow({
+  const refreshedDetail = await prisma.application.findUnique({
     where: { id: applicationId },
     include: applicationDetailInclude,
   });
+
+  if (!refreshedDetail) {
+    throw notFound("Application was not found.", "application_not_found");
+  }
+
+  return refreshedDetail;
 }
 
 export async function getApplicationResumeAsset(applicationId: string) {
@@ -324,7 +396,7 @@ export async function getApplicationResumeAsset(applicationId: string) {
   return application.resumeAsset;
 }
 
-export async function submitApplication(formData: FormData) {
+export async function submitApplication(formData: FormData): Promise<SubmitApplicationResult> {
   const parsed = applicationSubmissionSchema.parse({
     fullName: formData.get("fullName"),
     email: formData.get("email"),
@@ -427,6 +499,8 @@ export async function submitApplication(formData: FormData) {
     throw error;
   }
 
+  let confirmationEmailError: string | null = null;
+
   try {
     await sendApplicationConfirmation({
       applicationId,
@@ -435,8 +509,16 @@ export async function submitApplication(formData: FormData) {
       roleTitle: application.role.title,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown confirmation email error.";
+    const message = summarizeConfirmationEmailFailure(
+      error instanceof Error ? error.message : "Unknown confirmation email error.",
+    );
+    confirmationEmailError = message;
+    writeApplicationLog(
+      applicationId,
+      "Confirmation email",
+      `Application confirmation email failed: ${message.replaceAll('"', "'")}`,
+      "error",
+    );
 
     await appendStatusNote({
       applicationId,
@@ -446,7 +528,10 @@ export async function submitApplication(formData: FormData) {
     });
   }
 
-  return applicationId;
+  return {
+    applicationId,
+    confirmationEmailError,
+  };
 }
 
 export async function runScreeningPipeline(applicationId: string) {
@@ -502,8 +587,7 @@ export async function runScreeningPipeline(applicationId: string) {
     };
   }
 
-  const ai = getAiService();
-  const screening = await ai.screenResume({
+  const screeningInput = {
     candidateName: application.fullName,
     roleTitle: application.role.title,
     roleSummary: application.role.summary,
@@ -511,7 +595,19 @@ export async function runScreeningPipeline(applicationId: string) {
     roleRequirements: application.role.requirements,
     resumeText: application.resumeAsset.extractedText,
     threshold: env.screeningThreshold,
-  });
+  };
+  const ai = getAiService();
+  writeApplicationLog(
+    applicationId,
+    "AI screening",
+    `Dispatching screening request resumeChars=${screeningInput.resumeText.length} requirements=${screeningInput.roleRequirements.length}`,
+  );
+  const screening = await ai.screenResume(screeningInput);
+  writeApplicationLog(
+    applicationId,
+    "AI screening",
+    `Received screening result score=${screening.score} parsedSkills=${screening.parsedSkills.length}`,
+  );
 
   await prisma.screeningResult.upsert({
     where: { applicationId },
@@ -607,6 +703,12 @@ export async function runCandidateResearch(applicationId: string) {
     return application.researchProfile;
   }
 
+  writeApplicationLog(
+    applicationId,
+    "Candidate research",
+    `Dispatching research request resumeSummaryChars=${application.screeningResult.summary.length} hasPortfolio=${Boolean(application.portfolioUrl)}`,
+  );
+
   const research = await buildCandidateResearch({
     fullName: application.fullName,
     roleTitle: application.role.title,
@@ -614,6 +716,11 @@ export async function runCandidateResearch(applicationId: string) {
     portfolioUrl: application.portfolioUrl,
     resumeSummary: application.screeningResult.summary,
   });
+  writeApplicationLog(
+    applicationId,
+    "Candidate research",
+    `Received research result sources=${research.sources.length} discrepancies=${research.discrepancies.length}`,
+  );
 
   await prisma.researchProfile.upsert({
     where: { applicationId },
@@ -673,6 +780,59 @@ async function autoSendInterviewOptions(applicationId: string) {
   }
 
   return sendInterviewOptions(applicationId);
+}
+
+export async function resumePendingInterviewScheduling() {
+  const applications = await prisma.application.findMany({
+    where: {
+      status: ApplicationStatus.SHORTLISTED,
+    },
+    select: {
+      id: true,
+    },
+    orderBy: {
+      submittedAt: "asc",
+    },
+  });
+
+  let resumedCount = 0;
+
+  for (const application of applications) {
+    await recordAutomationActivity(
+      application.id,
+      "Scheduling automation",
+      "Scheduling resumed after Google Calendar was connected.",
+    );
+
+    try {
+      const holds = await autoSendInterviewOptions(application.id);
+
+      await recordAutomationActivity(
+        application.id,
+        "Scheduling automation",
+        holds
+          ? `Scheduling completed with ${holds.length} interview options.`
+          : "Scheduling was skipped because interview options already exist or the candidate is not ready.",
+      );
+
+      if (holds) {
+        resumedCount += 1;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown scheduling error.";
+
+      await recordAutomationActivity(
+        application.id,
+        "Scheduling automation",
+        `Scheduling failed: ${message}`,
+        "error",
+      );
+    }
+  }
+
+  return {
+    resumedCount,
+  };
 }
 
 export async function runApplicationAutomation(applicationId: string) {
@@ -843,6 +1003,9 @@ export async function sendInterviewOptions(applicationId: string) {
     );
   }
 
+  const calendar = getCalendarService();
+  await calendar.assertInterviewSchedulingReady();
+
   const interviewPlan =
     application.interviewPlan ??
     (await prisma.interviewPlan.create({
@@ -850,7 +1013,7 @@ export async function sendInterviewOptions(applicationId: string) {
         applicationId,
         interviewerName: env.interviewerName,
         interviewerEmail: env.interviewerEmail,
-        interviewerCalendarId: env.googleCalendarId || "local-calendar",
+        interviewerCalendarId: getRequiredInterviewerCalendarId(),
       },
     }));
 
@@ -878,7 +1041,6 @@ export async function sendInterviewOptions(applicationId: string) {
     },
   });
 
-  const calendar = getCalendarService();
   const slots = await calendar.findAvailableSlots({
     reserved: reservedHolds,
     count: 3,
@@ -1025,6 +1187,9 @@ export async function sendInterviewOptions(applicationId: string) {
 }
 
 export async function selectInterviewSlot(token: string) {
+  const calendar = getCalendarService();
+  await calendar.assertInterviewSchedulingReady();
+
   const result = await prisma.$transaction(
     async (tx) => {
       const hold = await tx.interviewSlotHold.findUniqueOrThrow({
@@ -1146,6 +1311,8 @@ export async function selectInterviewSlot(token: string) {
         applicationId: hold.interviewPlan.applicationId,
         candidateName: hold.interviewPlan.application.fullName,
         candidateEmail: hold.interviewPlan.application.email,
+        interviewerName: hold.interviewPlan.interviewerName,
+        interviewerEmail: hold.interviewPlan.interviewerEmail,
         roleTitle: hold.interviewPlan.application.role.title,
         selectedHold: hold,
         releasedCalendarEventIds: hold.interviewPlan.holds
@@ -1167,7 +1334,6 @@ export async function selectInterviewSlot(token: string) {
     },
   );
 
-  const calendar = getCalendarService();
   const confirmation = await calendar.confirmHoldEvent({
     eventId: result.selectedHold.googleCalendarEventId ?? result.selectedHold.id,
     candidateName: result.candidateName,
@@ -1201,6 +1367,19 @@ export async function selectInterviewSlot(token: string) {
       googleEventId: confirmation.eventId,
       meetingUrl: confirmation.meetingUrl,
     },
+  });
+
+  await notifyConfirmedInterview({
+    applicationId: result.applicationId,
+    candidateEmail: result.candidateEmail,
+    candidateName: result.candidateName,
+    interviewerEmail: result.interviewerEmail,
+    interviewerName: result.interviewerName,
+    roleTitle: result.roleTitle,
+    startsAt: result.selectedHold.startsAt,
+    endsAt: result.selectedHold.endsAt,
+    meetingUrl: confirmation.meetingUrl,
+    googleEventId: confirmation.eventId,
   });
 
   return getCandidateDetail(result.applicationId);
@@ -1298,6 +1477,9 @@ export async function scheduleApprovedInterviewTime(
     );
   }
 
+  const calendar = getCalendarService();
+  await calendar.assertInterviewSchedulingReady();
+
   const interviewPlan =
     application.interviewPlan ??
     (await prisma.interviewPlan.create({
@@ -1305,12 +1487,11 @@ export async function scheduleApprovedInterviewTime(
         applicationId,
         interviewerName: env.interviewerName,
         interviewerEmail: env.interviewerEmail,
-        interviewerCalendarId: env.googleCalendarId || "local-calendar",
+        interviewerCalendarId: getRequiredInterviewerCalendarId(),
       },
     }));
   const startsAt = parsed.startsAt;
   const endsAt = addMinutes(startsAt, 45);
-  const calendar = getCalendarService();
   const holdId = randomUUID();
   const newCalendarHold = await calendar.createHoldEvent({
     holdId,
@@ -1432,6 +1613,8 @@ export async function scheduleApprovedInterviewTime(
             .map((holdItem) => holdItem.googleCalendarEventId)
             .filter((eventId): eventId is string => Boolean(eventId)),
           previousInterviewEventId: existingInterview?.googleEventId ?? null,
+          interviewerEmail: interviewPlan.interviewerEmail,
+          interviewerName: interviewPlan.interviewerName,
         };
       },
       {
@@ -1468,6 +1651,19 @@ export async function scheduleApprovedInterviewTime(
         googleEventId: confirmation.eventId,
         meetingUrl: confirmation.meetingUrl,
       },
+    });
+
+    await notifyConfirmedInterview({
+      applicationId,
+      candidateEmail: application.email,
+      candidateName: application.fullName,
+      interviewerEmail: result.interviewerEmail,
+      interviewerName: result.interviewerName,
+      roleTitle: application.role.title,
+      startsAt,
+      endsAt,
+      meetingUrl: confirmation.meetingUrl,
+      googleEventId: confirmation.eventId,
     });
   } catch (error) {
     await calendar.releaseHoldEvent(newCalendarHold.eventId).catch(() => undefined);
@@ -1622,6 +1818,148 @@ export async function syncInterviewAttendance(applicationId: string) {
   return mappedStatus;
 }
 
+export async function startInterviewNotetaker(applicationId: string) {
+  const application = await prisma.application.findUniqueOrThrow({
+    where: { id: applicationId },
+    include: {
+      role: true,
+      interview: true,
+      interviewPlan: true,
+    },
+  });
+
+  if (!application.interview?.meetingUrl) {
+    throw conflict(
+      "Interview must be confirmed before Fireflies can join.",
+      "interview_not_ready_for_notetaker",
+    );
+  }
+
+  writeApplicationLog(applicationId, "Fireflies", "Requesting live meeting capture.");
+
+  try {
+    const transcriptService = getTranscriptService();
+    const capture = await transcriptService.startLiveMeetingCapture({
+      attendees: [
+        {
+          email: application.email,
+          displayName: application.fullName,
+        },
+        {
+          email: application.interviewPlan?.interviewerEmail || env.interviewerEmail,
+          displayName: application.interviewPlan?.interviewerName || env.interviewerName,
+        },
+      ],
+      durationMinutes: Math.max(
+        15,
+        Math.round(
+          (application.interview.endsAt.getTime() - application.interview.startsAt.getTime()) /
+            60_000,
+        ),
+      ),
+      meetingLink: application.interview.meetingUrl,
+      title: `${application.role.title} interview with ${application.fullName}`,
+    });
+
+    await prisma.interview.update({
+      where: { id: application.interview.id },
+      data: {
+        notetakerProvider: "fireflies",
+        notetakerMeetingId: capture.providerMeetingId,
+        notetakerState: capture.state ?? "REQUESTED",
+        notetakerRequestedAt: capture.requestedAt,
+      },
+    });
+
+    const statusNote = [
+      capture.message.trim(),
+      capture.providerMeetingId ? `Meeting ID: ${capture.providerMeetingId}.` : null,
+      capture.state ? `State: ${capture.state}.` : null,
+      "If the call finishes before Fireflies syncs, paste transcript or interview notes below to continue.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    await recordIntegrationActivity(applicationId, "Fireflies", statusNote);
+
+    return {
+      application: await getCandidateDetail(applicationId),
+      message: statusNote,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to start Fireflies.";
+    await recordIntegrationActivity(applicationId, "Fireflies", `Start failed: ${message}`, "error");
+    throw error;
+  }
+}
+
+export async function syncInterviewNotetakerStatus(applicationId: string) {
+  const application = await prisma.application.findUniqueOrThrow({
+    where: { id: applicationId },
+    include: {
+      interview: true,
+    },
+  });
+
+  if (!application.interview?.meetingUrl) {
+    throw conflict(
+      "Interview must be confirmed before Fireflies status can be checked.",
+      "interview_not_ready_for_notetaker",
+    );
+  }
+
+  writeApplicationLog(applicationId, "Fireflies", "Checking live meeting status.");
+
+  try {
+    const transcriptService = getTranscriptService();
+    const liveMeeting = await transcriptService.findLiveMeetingByLink({
+      meetingLink: application.interview.meetingUrl,
+    });
+
+    if (liveMeeting) {
+      await prisma.interview.update({
+        where: { id: application.interview.id },
+        data: {
+          notetakerProvider: "fireflies",
+          notetakerMeetingId: liveMeeting.providerMeetingId,
+          notetakerState: liveMeeting.state ?? "ACTIVE",
+        },
+      });
+
+      const message = `Fireflies state: ${liveMeeting.state ?? "UNKNOWN"}${liveMeeting.providerMeetingId ? ` · Meeting ID: ${liveMeeting.providerMeetingId}` : ""}`;
+
+      if (
+        application.interview.notetakerMeetingId !== liveMeeting.providerMeetingId ||
+        application.interview.notetakerState !== (liveMeeting.state ?? "ACTIVE")
+      ) {
+        await recordIntegrationActivity(applicationId, "Fireflies", message);
+      } else {
+        writeApplicationLog(applicationId, "Fireflies", message);
+      }
+
+      return {
+        application: await getCandidateDetail(applicationId),
+        message,
+      };
+    }
+
+    const message = application.interview.notetakerMeetingId
+      ? `Fireflies is not currently reporting this meeting as live. Stored meeting ID: ${application.interview.notetakerMeetingId}. If the interview already happened, fetch the transcript below or paste notes manually.`
+      : "Fireflies has not joined this meeting yet. If the interview already happened, paste transcript or interview notes below to continue.";
+
+    writeApplicationLog(applicationId, "Fireflies", message);
+
+    return {
+      application: await getCandidateDetail(applicationId),
+      message,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to sync Fireflies status.";
+    await recordIntegrationActivity(applicationId, "Fireflies", `Status check failed: ${message}`, "error");
+    throw error;
+  }
+}
+
 export async function ingestTranscriptFromWebhook(input: {
   applicationId: string;
   providerMeetingId?: string;
@@ -1642,57 +1980,110 @@ export async function ingestTranscriptFromWebhook(input: {
     );
   }
 
-  const transcriptService = getTranscriptService();
-  const transcriptPayload = await transcriptService.retrieveTranscript({
-    providerMeetingId: input.providerMeetingId,
-    directText: input.directText,
-    candidateName: application.fullName,
-    roleTitle: application.role.title,
-  });
-  const transcriptText = transcriptPayload.fullText.trim()
-    ? transcriptPayload.fullText
-    : [transcriptPayload.summary, ...transcriptPayload.bulletPoints].join("\n");
-  const ai = getAiService();
-  const transcriptSummary = await ai.summarizeTranscript({
-    candidateName: application.fullName,
-    roleTitle: application.role.title,
-    transcriptText,
-  });
+  const providerMeetingId =
+    input.providerMeetingId?.trim() || application.interview.notetakerMeetingId || undefined;
+  const directText = input.directText?.trim() || undefined;
 
-  await prisma.transcript.upsert({
-    where: {
-      interviewId: application.interview.id,
-    },
-    update: {
-      provider: transcriptPayload.provider,
-      providerMeetingId: transcriptPayload.providerMeetingId,
-      summary: transcriptSummary.summary,
-      bulletPoints: transcriptSummary.bulletPoints,
-      fullText: transcriptText,
-      retrievedAt: transcriptPayload.retrievedAt,
-    },
-    create: {
-      interviewId: application.interview.id,
-      provider: transcriptPayload.provider,
-      providerMeetingId: transcriptPayload.providerMeetingId,
-      summary: transcriptSummary.summary,
-      bulletPoints: transcriptSummary.bulletPoints,
-      fullText: transcriptText,
-      retrievedAt: transcriptPayload.retrievedAt,
-    },
-  });
-
-  if (application.status === ApplicationStatus.INTERVIEW_SCHEDULED) {
-    await transitionApplicationStatus({
-      applicationId: application.id,
-      toStatus: ApplicationStatus.INTERVIEW_COMPLETED,
-      actorType: ActorType.INTEGRATION,
-      actorLabel: "Fireflies",
-      note: "Transcript stored after interview.",
-    });
+  if (!providerMeetingId && !directText) {
+    throw badRequest(
+      "No Fireflies meeting ID is stored yet. Start or sync Fireflies first, or paste transcript text directly.",
+      "missing_transcript_source",
+    );
   }
 
-  return getCandidateDetail(application.id);
+  writeApplicationLog(
+    application.id,
+    "Transcript",
+    directText
+      ? `Storing pasted transcript text chars=${directText.length}.`
+      : `Fetching transcript from Fireflies meetingId=${providerMeetingId}.`,
+  );
+
+  try {
+    const transcriptService = getTranscriptService();
+    const transcriptPayload = await transcriptService.retrieveTranscript({
+      providerMeetingId,
+      directText,
+      candidateName: application.fullName,
+      roleTitle: application.role.title,
+    });
+    const transcriptText = transcriptPayload.fullText.trim()
+      ? transcriptPayload.fullText
+      : [transcriptPayload.summary, ...transcriptPayload.bulletPoints].join("\n");
+    const ai = getAiService();
+    const transcriptSummary = await ai.summarizeTranscript({
+      candidateName: application.fullName,
+      roleTitle: application.role.title,
+      transcriptText,
+    });
+
+    await prisma.transcript.upsert({
+      where: {
+        interviewId: application.interview.id,
+      },
+      update: {
+        provider: transcriptPayload.provider,
+        providerMeetingId: transcriptPayload.providerMeetingId,
+        summary: transcriptSummary.summary,
+        bulletPoints: transcriptSummary.bulletPoints,
+        fullText: transcriptText,
+        retrievedAt: transcriptPayload.retrievedAt,
+      },
+      create: {
+        interviewId: application.interview.id,
+        provider: transcriptPayload.provider,
+        providerMeetingId: transcriptPayload.providerMeetingId,
+        summary: transcriptSummary.summary,
+        bulletPoints: transcriptSummary.bulletPoints,
+        fullText: transcriptText,
+        retrievedAt: transcriptPayload.retrievedAt,
+      },
+    });
+
+    await prisma.interview.update({
+      where: { id: application.interview.id },
+      data: {
+        notetakerProvider: transcriptPayload.provider === "direct-input" ? "manual" : "fireflies",
+        notetakerMeetingId: transcriptPayload.providerMeetingId ?? providerMeetingId,
+        notetakerState: "TRANSCRIPT_STORED",
+      },
+    });
+
+    const shouldAdvanceToInterviewCompleted =
+      application.status === ApplicationStatus.INTERVIEW_PENDING ||
+      application.status === ApplicationStatus.INTERVIEW_SCHEDULED;
+
+    const actorLabel = transcriptPayload.provider === "direct-input" ? "Transcript import" : "Fireflies";
+    const statusNote =
+      transcriptPayload.provider === "direct-input"
+        ? "Transcript stored from pasted interview notes."
+        : "Transcript stored after Fireflies retrieval.";
+
+    if (shouldAdvanceToInterviewCompleted) {
+      await transitionApplicationStatus({
+        applicationId: application.id,
+        toStatus: ApplicationStatus.INTERVIEW_COMPLETED,
+        actorType: ActorType.INTEGRATION,
+        actorLabel,
+        note: `${statusNote} Interview moved to completed.`,
+      });
+    } else {
+      await recordIntegrationActivity(application.id, actorLabel, statusNote);
+    }
+
+    const message = shouldAdvanceToInterviewCompleted
+      ? "Transcript stored and interview moved to completed."
+      : "Transcript stored successfully.";
+
+    return {
+      application: await getCandidateDetail(application.id),
+      message,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to ingest transcript.";
+    await recordIntegrationActivity(application.id, "Transcript", `Import failed: ${message}`, "error");
+    throw error;
+  }
 }
 
 export async function submitInterviewFeedback(

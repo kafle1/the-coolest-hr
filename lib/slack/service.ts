@@ -4,8 +4,13 @@ import { WebClient } from "@slack/web-api";
 
 import { env } from "@/lib/utils/env";
 
+export type SlackOnboardingMode = "workspace_invite" | "connect_link";
+
 export interface SlackService {
-  inviteCandidate(input: { email: string; channelIds?: string[] }): Promise<{ externalId: string }>;
+  inviteCandidate(input: {
+    email: string;
+    channelIds?: string[];
+  }): Promise<{ externalId: string; mode: SlackOnboardingMode }>;
   sendDirectMessage(input: { slackUserId: string; text: string }): Promise<void>;
   notifyHr(input: { text: string }): Promise<void>;
   getUserEmail(slackUserId: string): Promise<string | null>;
@@ -55,6 +60,7 @@ class LocalSlackService implements SlackService {
     console.warn(`[LocalSlackService] Would invite ${input.email} to Slack`);
     return {
       externalId: `local-invite-${input.email}`,
+      mode: "workspace_invite" as const,
     };
   }
 
@@ -77,12 +83,37 @@ class LocalSlackService implements SlackService {
 
 class RealSlackService implements SlackService {
   private readonly botClient = new WebClient(env.slackBotToken);
-  private readonly adminClient = new WebClient(env.slackAdminUserToken);
+  private readonly adminClient = env.slackAdminUserToken
+    ? new WebClient(env.slackAdminUserToken)
+    : null;
+
+  private assertBotClientConfigured() {
+    if (!env.slackBotToken) {
+      throw new Error("SLACK_BOT_TOKEN is required for Slack bot messaging.");
+    }
+  }
 
   async inviteCandidate(input: { email: string; channelIds?: string[] }) {
     const channelIds = input.channelIds?.length
       ? input.channelIds
-      : env.slackDefaultChannelIds;
+      : env.slackDefaultChannelIds.length
+        ? env.slackDefaultChannelIds
+        : env.slackHrChannelId
+          ? [env.slackHrChannelId]
+          : [];
+
+    if (!this.adminClient) {
+      if (env.slackClientId && env.slackClientSecret) {
+        return {
+          externalId: input.email,
+          mode: "connect_link" as const,
+        };
+      }
+
+      throw new Error(
+        "Slack onboarding is missing an admin invite token or candidate connect credentials.",
+      );
+    }
 
     if (!env.slackTeamId) {
       throw new Error("SLACK_TEAM_ID is required for real Slack invite mode.");
@@ -102,6 +133,7 @@ class RealSlackService implements SlackService {
       return {
         externalId:
           (response as { invite_id?: string }).invite_id ?? input.email,
+        mode: "workspace_invite" as const,
       };
     } catch (error) {
       const errorCode = readSlackErrorCode(error);
@@ -112,6 +144,7 @@ class RealSlackService implements SlackService {
       ) {
         return {
           externalId: input.email,
+          mode: "workspace_invite" as const,
         };
       }
 
@@ -120,6 +153,8 @@ class RealSlackService implements SlackService {
   }
 
   async sendDirectMessage(input: { slackUserId: string; text: string }) {
+    this.assertBotClientConfigured();
+
     const conversation = await this.botClient.conversations.open({
       users: input.slackUserId,
     });
@@ -135,22 +170,39 @@ class RealSlackService implements SlackService {
   }
 
   async notifyHr(input: { text: string }) {
-    if (!env.slackHrChannelId) {
+    this.assertBotClientConfigured();
+
+    const channelId =
+      env.slackHrChannelId || env.slackDefaultChannelIds[0] || null;
+
+    if (!channelId) {
       return;
     }
 
     await this.botClient.chat.postMessage({
-      channel: env.slackHrChannelId,
+      channel: channelId,
       text: input.text,
     });
   }
 
   async getUserEmail(slackUserId: string) {
-    const response = await this.botClient.users.info({
-      user: slackUserId,
-    });
+    this.assertBotClientConfigured();
 
-    return response.user?.profile?.email ?? null;
+    try {
+      const response = await this.botClient.users.info({
+        user: slackUserId,
+      });
+
+      return response.user?.profile?.email ?? null;
+    } catch (error) {
+      const errorCode = readSlackErrorCode(error);
+
+      if (errorCode === "missing_scope") {
+        return null;
+      }
+
+      throw error;
+    }
   }
 
   verifyRequestSignature(input: {
@@ -158,6 +210,10 @@ class RealSlackService implements SlackService {
     timestamp: string;
     signature: string;
   }) {
+    if (!env.slackSigningSecret) {
+      return false;
+    }
+
     if (!input.signature || !input.timestamp || !isFreshSlackTimestamp(input.timestamp)) {
       return false;
     }
@@ -174,9 +230,9 @@ class RealSlackService implements SlackService {
 export function getSlackService(): SlackService {
   if (
     process.env.NODE_ENV === "test" ||
-    !env.slackBotToken ||
-    !env.slackAdminUserToken ||
-    !env.slackSigningSecret
+    (!env.slackBotToken &&
+      !env.slackAdminUserToken &&
+      !(env.slackClientId && env.slackClientSecret))
   ) {
     return new LocalSlackService();
   }

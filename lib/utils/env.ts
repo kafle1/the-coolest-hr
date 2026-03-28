@@ -17,7 +17,7 @@ function readNumber(value: string | undefined, fallback: number) {
 }
 
 const supportedAiProviders = ["auto", "openai", "openrouter"] as const;
-const supportedGoogleCalendarAuthModes = ["service-account", "gcloud-user"] as const;
+const supportedGoogleCalendarAuthModes = ["service-account", "oauth-refresh"] as const;
 
 type SupportedAiProvider = (typeof supportedAiProviders)[number];
 type SupportedGoogleCalendarAuthMode = (typeof supportedGoogleCalendarAuthModes)[number];
@@ -157,11 +157,12 @@ export const env = {
   openRouterAppName: process.env.OPENROUTER_APP_NAME ?? "Niural Candidate Onboarding System",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   resendFromEmail: process.env.RESEND_FROM_EMAIL ?? "Niural Hiring <onboarding@niural.com>",
-  resendFallbackFromEmail:
-    process.env.RESEND_FALLBACK_FROM_EMAIL ?? "Niural Hiring <onboarding@resend.dev>",
   googleCalendarAuthMode: readGoogleCalendarAuthMode(
     process.env.GOOGLE_CALENDAR_AUTH_MODE,
   ),
+  googleOAuthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() ?? "",
+  googleOAuthClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() ?? "",
+  googleOAuthRefreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN?.trim() ?? "",
   googleServiceAccountEmail:
     readFirstNonEmpty(
       process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -173,11 +174,10 @@ export const env = {
       googleServiceAccount?.private_key,
     ) ?? "",
   googleCalendarId: process.env.GOOGLE_CALENDAR_ID ?? "",
-  gcloudConfigDir:
-    process.env.GCLOUD_CONFIG_DIR?.trim() ??
-    (process.env.HOME ? join(process.env.HOME, ".config", "gcloud") : ""),
   interviewerName: process.env.INTERVIEWER_NAME ?? "Jordan Lee",
   interviewerEmail: process.env.INTERVIEWER_EMAIL ?? "jordan.lee@example.com",
+  slackClientId: process.env.SLACK_CLIENT_ID?.trim() ?? "",
+  slackClientSecret: process.env.SLACK_CLIENT_SECRET?.trim() ?? "",
   slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",
   slackAdminUserToken: process.env.SLACK_ADMIN_USER_TOKEN ?? "",
   slackSigningSecret: process.env.SLACK_SIGNING_SECRET ?? "",

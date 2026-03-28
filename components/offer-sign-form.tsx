@@ -150,14 +150,21 @@ export function OfferSignForm({ offerId }: { offerId: string }) {
                   signatureDataUrl,
                 }),
               });
-              const payload = (await response.json()) as { message?: string };
+              const payload = (await response.json()) as {
+                message?: string;
+                onboardingUrl?: string | null;
+              };
 
               if (!response.ok) {
                 throw new Error(payload.message ?? "Unable to sign offer.");
               }
 
-              setMessage("Offer signed successfully. Slack onboarding has been triggered.");
+              setMessage(payload.message ?? "Offer signed successfully.");
               router.refresh();
+
+              if (payload.onboardingUrl) {
+                window.location.assign(payload.onboardingUrl);
+              }
             } catch (submissionError) {
               setError(
                 submissionError instanceof Error

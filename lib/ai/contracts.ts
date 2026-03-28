@@ -1,46 +1,54 @@
 import { z } from "zod";
 
+const flexibleStringListSchema = z
+  .union([z.array(z.string()), z.string(), z.null()])
+  .optional();
+
 export const screeningSchema = z.object({
   score: z.number().int().min(0).max(100),
   summary: z.string(),
-  strengths: z.array(z.string()).min(1),
-  gaps: z.array(z.string()).min(1),
-  parsedSkills: z.array(z.string()).min(1),
-  yearsExperience: z.number().int().min(0).nullable(),
+  strengths: flexibleStringListSchema,
+  gaps: flexibleStringListSchema,
+  parsedSkills: flexibleStringListSchema,
+  yearsExperience: z.number().int().min(0).nullable().optional(),
   education: z
     .object({
-      highestDegree: z.string(),
-      focus: z.string(),
+      highestDegree: z.string().optional(),
+      focus: z.string().optional(),
     })
-    .nullable(),
-  pastEmployers: z.array(z.string()),
-  achievements: z.array(z.string()),
+    .nullable()
+    .optional(),
+  pastEmployers: flexibleStringListSchema,
+  achievements: flexibleStringListSchema,
 });
 
 export const researchSchema = z.object({
   brief: z.string(),
-  linkedinSummary: z.string().nullable(),
-  xSummary: z.string().nullable(),
-  githubSummary: z.string().nullable(),
-  portfolioSummary: z.string().nullable(),
-  discrepancies: z.array(z.string()),
-  limitations: z.array(z.string()),
-  sources: z.array(
-    z.object({
-      label: z.string(),
-      url: z.string().url(),
-    }),
-  ),
+  linkedinSummary: z.string().nullable().optional(),
+  xSummary: z.string().nullable().optional(),
+  githubSummary: z.string().nullable().optional(),
+  portfolioSummary: z.string().nullable().optional(),
+  discrepancies: flexibleStringListSchema,
+  limitations: flexibleStringListSchema,
+  sources: z
+    .array(
+      z.object({
+        label: z.string(),
+        url: z.string().url(),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 export const transcriptSummarySchema = z.object({
   summary: z.string(),
-  bulletPoints: z.array(z.string()).min(3),
+  bulletPoints: flexibleStringListSchema,
 });
 
 export const feedbackReviewSchema = z.object({
   requiresAttention: z.boolean(),
-  flaggedPhrases: z.array(z.string()),
+  flaggedPhrases: flexibleStringListSchema,
   rewriteSuggestion: z.string(),
   reasoning: z.string(),
 });
@@ -54,9 +62,46 @@ export const slackWelcomeSchema = z.object({
   message: z.string(),
 });
 
-export type ScreeningResultPayload = z.infer<typeof screeningSchema>;
-export type ResearchResultPayload = z.infer<typeof researchSchema>;
-export type TranscriptSummaryPayload = z.infer<typeof transcriptSummarySchema>;
-export type FeedbackReviewPayload = z.infer<typeof feedbackReviewSchema>;
+export type ScreeningResultPayload = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  parsedSkills: string[];
+  yearsExperience: number | null;
+  education: {
+    highestDegree: string;
+    focus: string;
+  } | null;
+  pastEmployers: string[];
+  achievements: string[];
+};
+
+export type ResearchResultPayload = {
+  brief: string;
+  linkedinSummary: string | null;
+  xSummary: string | null;
+  githubSummary: string | null;
+  portfolioSummary: string | null;
+  discrepancies: string[];
+  limitations: string[];
+  sources: Array<{
+    label: string;
+    url: string;
+  }>;
+};
+
+export type TranscriptSummaryPayload = {
+  summary: string;
+  bulletPoints: string[];
+};
+
+export type FeedbackReviewPayload = {
+  requiresAttention: boolean;
+  flaggedPhrases: string[];
+  rewriteSuggestion: string;
+  reasoning: string;
+};
+
 export type OfferLetterPayload = z.infer<typeof offerLetterSchema>;
 export type SlackWelcomePayload = z.infer<typeof slackWelcomeSchema>;

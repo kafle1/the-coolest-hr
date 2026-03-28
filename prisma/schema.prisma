@@ -64,6 +64,7 @@ enum EmailDeliveryStatus {
 
 enum OnboardingEventType {
   SLACK_INVITE_SENT
+  SLACK_CONNECT_READY
   SLACK_TEAM_JOIN
   WELCOME_SENT
   HR_NOTIFIED
@@ -209,6 +210,10 @@ model Interview {
   googleEventId         String?                  @unique
   meetingUrl            String?
   attendeeResponseStatus InterviewResponseStatus @default(NEEDS_ACTION)
+  notetakerProvider     String?
+  notetakerMeetingId    String?
+  notetakerState        String?
+  notetakerRequestedAt  DateTime?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   transcript            Transcript?

@@ -8,7 +8,7 @@ import {
 } from "@prisma/client";
 
 import { getAiService } from "@/lib/ai/service";
-import { sendOfferSignedAlert } from "@/lib/email/service";
+import { sendOfferLetterEmail, sendOfferSignedAlert } from "@/lib/email/service";
 import { prisma } from "@/lib/prisma/client";
 import { getSlackService } from "@/lib/slack/service";
 import { appendStatusNote, transitionApplicationStatus } from "@/lib/status/transitions";
@@ -17,6 +17,10 @@ import { env } from "@/lib/utils/env";
 import { badRequest, conflict } from "@/lib/utils/errors";
 import { escapeHtml, renderPlainTextParagraphs } from "@/lib/utils/html";
 import { formatDateOnly } from "@/lib/utils/format";
+
+function normalizeUrl(value: string) {
+  return value.replace(/\/$/, "");
+}
 
 function renderOfferHtml(input: {
   candidateName: string;
@@ -43,12 +47,35 @@ function renderOfferHtml(input: {
   `;
 }
 
+function getSlackOnboardingNote(type: OnboardingEventType) {
+  return type === OnboardingEventType.SLACK_CONNECT_READY
+    ? "Slack onboarding link prepared after offer signature."
+    : "Slack workspace invite sent after offer signature.";
+}
+
+function writeOfferLog(
+  applicationId: string,
+  actorLabel: string,
+  note: string,
+  level: "info" | "error" = "info",
+) {
+  const message = `[hiring-os] ${new Date().toISOString()} application=${applicationId} step="${actorLabel}" ${note}`;
+
+  if (level === "error") {
+    console.error(message);
+    return;
+  }
+
+  console.info(message);
+}
+
 async function loadOfferForWorkflow(offerId: string) {
   return prisma.offer.findUniqueOrThrow({
     where: { id: offerId },
     include: {
       application: {
         include: {
+          onboardingEvents: true,
           role: true,
         },
       },
@@ -127,8 +154,8 @@ export async function generateOfferForApplication(input: {
       customTerms: input.customTerms,
       generatedContent: draft.bodyText,
       generatedHtml: html,
-      status: input.sendNow ? OfferStatus.SENT : OfferStatus.DRAFT,
-      sentAt: input.sendNow ? new Date() : null,
+      status: application.offer?.status === OfferStatus.SENT ? OfferStatus.SENT : OfferStatus.DRAFT,
+      sentAt: application.offer?.status === OfferStatus.SENT ? application.offer.sentAt : null,
     },
     create: {
       applicationId: input.applicationId,
@@ -142,8 +169,8 @@ export async function generateOfferForApplication(input: {
       customTerms: input.customTerms,
       generatedContent: draft.bodyText,
       generatedHtml: html,
-      status: input.sendNow ? OfferStatus.SENT : OfferStatus.DRAFT,
-      sentAt: input.sendNow ? new Date() : null,
+      status: OfferStatus.DRAFT,
+      sentAt: null,
     },
   });
 
@@ -160,13 +187,62 @@ export async function generateOfferForApplication(input: {
       });
     }
 
-    await transitionApplicationStatus({
-      applicationId: input.applicationId,
-      toStatus: ApplicationStatus.OFFER_SENT,
-      actorType: ActorType.ADMIN,
-      actorLabel: "Admin dashboard",
-      note: "Offer generated and sent.",
+    try {
+      await sendOfferLetterEmail({
+        applicationId: input.applicationId,
+        candidateName: application.fullName,
+        toEmail: application.email,
+        roleTitle: input.jobTitle,
+        startDate: input.startDate,
+        baseSalary: input.baseSalary,
+        signingUrl: `${normalizeUrl(env.appUrl)}/offers/sign/${offer.token}`,
+      });
+    } catch (error) {
+      writeOfferLog(
+        input.applicationId,
+        "Offer delivery",
+        `Offer email failed: ${error instanceof Error ? error.message : "Unknown error."}`,
+        "error",
+      );
+
+      await appendStatusNote({
+        applicationId: input.applicationId,
+        actorType: ActorType.SYSTEM,
+        actorLabel: "Offer delivery",
+        note: `Offer draft is ready, but the candidate email failed: ${
+          error instanceof Error ? error.message : "Unknown error."
+        }`,
+      });
+
+      throw error;
+    }
+
+    const sentOffer = await prisma.offer.update({
+      where: { id: offer.id },
+      data: {
+        status: OfferStatus.SENT,
+        sentAt: new Date(),
+      },
     });
+
+    if (application.status !== ApplicationStatus.OFFER_SENT) {
+      await transitionApplicationStatus({
+        applicationId: input.applicationId,
+        toStatus: ApplicationStatus.OFFER_SENT,
+        actorType: ActorType.ADMIN,
+        actorLabel: "Admin dashboard",
+        note: "Offer generated and sent.",
+      });
+    } else {
+      await appendStatusNote({
+        applicationId: input.applicationId,
+        actorType: ActorType.ADMIN,
+        actorLabel: "Admin dashboard",
+        note: "Offer email was re-sent to the candidate.",
+      });
+    }
+
+    return sentOffer;
   } else {
     await transitionApplicationStatus({
       applicationId: input.applicationId,
@@ -263,10 +339,25 @@ export async function signOffer(input: {
   const existingSlackInvite = await prisma.onboardingEvent.findFirst({
     where: {
       applicationId: offer.applicationId,
-      type: OnboardingEventType.SLACK_INVITE_SENT,
+      type: {
+        in: [
+          OnboardingEventType.SLACK_INVITE_SENT,
+          OnboardingEventType.SLACK_CONNECT_READY,
+        ],
+      },
     },
-    select: { id: true },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      id: true,
+      type: true,
+    },
   });
+
+  let slackOnboardingNote = existingSlackInvite
+    ? getSlackOnboardingNote(existingSlackInvite.type)
+    : null;
 
   if (!existingSlackInvite) {
     try {
@@ -274,23 +365,36 @@ export async function signOffer(input: {
       const invite = await slack.inviteCandidate({
         email: offer.application.email,
       });
+      const onboardingEventType =
+        invite.mode === "connect_link"
+          ? OnboardingEventType.SLACK_CONNECT_READY
+          : OnboardingEventType.SLACK_INVITE_SENT;
 
       await prisma.onboardingEvent.create({
         data: {
           applicationId: offer.applicationId,
-          type: OnboardingEventType.SLACK_INVITE_SENT,
+          type: onboardingEventType,
           externalId: invite.externalId,
           payload: {
             email: offer.application.email,
+            mode: invite.mode,
           },
         },
       });
+
+      slackOnboardingNote = getSlackOnboardingNote(onboardingEventType);
     } catch (error) {
+      writeOfferLog(
+        offer.applicationId,
+        "Slack onboarding",
+        `Offer was signed, but Slack onboarding could not be prepared: ${error instanceof Error ? error.message : "Unknown error."}`,
+        "error",
+      );
       await appendStatusNote({
         applicationId: offer.applicationId,
         actorType: ActorType.SYSTEM,
-        actorLabel: "Slack invite",
-        note: `Offer was signed, but the Slack invite failed: ${error instanceof Error ? error.message : "Unknown error."}`,
+        actorLabel: "Slack onboarding",
+        note: `Offer was signed, but Slack onboarding could not be prepared: ${error instanceof Error ? error.message : "Unknown error."}`,
       });
     }
   }
@@ -300,13 +404,13 @@ export async function signOffer(input: {
     select: { status: true },
   });
 
-  if (latestApplication.status === ApplicationStatus.OFFER_SIGNED) {
+  if (latestApplication.status === ApplicationStatus.OFFER_SIGNED && slackOnboardingNote) {
     await transitionApplicationStatus({
       applicationId: offer.applicationId,
       toStatus: ApplicationStatus.SLACK_INVITED,
       actorType: ActorType.INTEGRATION,
       actorLabel: "Slack",
-      note: "Slack invitation sent after offer signature.",
+      note: slackOnboardingNote,
     });
   }
 

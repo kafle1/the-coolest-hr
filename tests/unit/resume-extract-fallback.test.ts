@@ -3,7 +3,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type MockChildProcess = EventEmitter & {
   kill(): void;
@@ -48,6 +48,11 @@ function createMockChildProcess(options?: {
 }
 
 describe("extractResumeText PDF fallback order", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
   afterEach(() => {
     vi.doUnmock("node:child_process");
     vi.resetModules();

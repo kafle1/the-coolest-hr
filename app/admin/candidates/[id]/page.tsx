@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ActorType, ApplicationStatus } from "@prisma/client";
+import { ActorType, ApplicationStatus, HoldStatus } from "@prisma/client";
 
 import { FeedbackForm } from "@/components/feedback-form";
+import { InterviewNotetakerActions } from "@/components/interview-notetaker-actions";
 import { LiveRefresh } from "@/components/live-refresh";
 import { OfferGenerationForm } from "@/components/offer-generation-form";
 import { OverrideForm } from "@/components/override-form";
@@ -15,6 +16,7 @@ import {
   canSendInterviewOptionsStatus,
   getCandidateDetail,
 } from "@/lib/applications/service";
+import { getGoogleCalendarConnectionState } from "@/lib/calendar/oauth-config";
 import { listManualOverrideTargets } from "@/lib/status/transitions";
 import {
   formatDateTime,
@@ -90,6 +92,42 @@ function isAutomationRunning(application: CandidateDetail) {
   ].includes(latestAutomationNote);
 }
 
+function hasActiveSchedulingOptions(application: CandidateDetail) {
+  return (
+    application.interviewPlan?.holds.some((hold) => hold.status === HoldStatus.HELD) ?? false
+  );
+}
+
+function shouldLiveRefresh(application: CandidateDetail) {
+  if (isAutomationRunning(application)) {
+    return true;
+  }
+
+  if (
+    application.status === ApplicationStatus.INTERVIEW_PENDING &&
+    (hasActiveSchedulingOptions(application) || Boolean(application.interviewPlan?.candidateRequestNote))
+  ) {
+    return true;
+  }
+
+  if (
+    application.status === ApplicationStatus.INTERVIEW_SCHEDULED &&
+    !application.interview?.transcript
+  ) {
+    return true;
+  }
+
+  if (application.status === ApplicationStatus.OFFER_SENT) {
+    return true;
+  }
+
+  if (application.status === ApplicationStatus.SLACK_INVITED) {
+    return true;
+  }
+
+  return false;
+}
+
 function getStatusActivityTitle(item: CandidateDetail["statusHistory"][number]) {
   if (item.fromStatus && item.fromStatus !== item.toStatus) {
     return `Moved to ${formatStatusLabel(item.toStatus)}`;
@@ -131,9 +169,12 @@ function buildActivityFeed(application: CandidateDetail) {
     id: `onboarding-${item.id}`,
     category: "Onboarding",
     title: formatStatusLabel(item.type),
-    detail: item.externalId
-      ? `External ID: ${item.externalId}`
-      : "Onboarding activity was recorded.",
+    detail:
+      item.type === "SLACK_CONNECT_READY"
+        ? "Candidate can finish Slack onboarding from the signed offer page."
+        : item.externalId
+          ? `External ID: ${item.externalId}`
+          : "Onboarding activity was recorded.",
     timestamp: item.createdAt,
     tone: "success",
   }));
@@ -173,8 +214,11 @@ function buildPipelineStages(application: CandidateDetail): StageItem[] {
   ]);
   const schedulingStarted =
     Boolean(application.interview) || Boolean(application.interviewPlan?.holds.length);
-  const onboardingStarted = application.onboardingEvents.some(
+  const onboardingInviteSent = application.onboardingEvents.some(
     (event) => event.type === "SLACK_INVITE_SENT",
+  );
+  const onboardingConnectReady = application.onboardingEvents.some(
+    (event) => event.type === "SLACK_CONNECT_READY",
   );
   const screeningActivity = getLatestActivityNote(application, ["AI screening"]);
   const researchActivity = getLatestActivityNote(application, ["Candidate research"]);
@@ -182,12 +226,16 @@ function buildPipelineStages(application: CandidateDetail): StageItem[] {
     "Scheduling automation",
     "Scheduling",
   ]);
+  const confirmationEmailActivity = getLatestActivityNote(application, [
+    "Confirmation email",
+  ]);
 
   return [
     {
       label: "Applied",
       complete: true,
-      detail: "Submission, resume upload, and confirmation email",
+      detail:
+        confirmationEmailActivity ?? "Submission, resume upload, and confirmation email",
     },
     {
       label: "Screening",
@@ -235,8 +283,10 @@ function buildPipelineStages(application: CandidateDetail): StageItem[] {
       complete: application.status === ApplicationStatus.ONBOARDED,
       detail: application.status === ApplicationStatus.ONBOARDED
         ? "Slack join and onboarding welcome were completed"
-        : onboardingStarted
-          ? "Slack invite has been sent"
+        : onboardingInviteSent
+          ? "Slack workspace invite has been sent"
+          : onboardingConnectReady
+            ? "Candidate can continue Slack onboarding from the signed offer page"
           : "Onboarding starts after the offer is signed",
     },
   ];
@@ -297,12 +347,14 @@ export default async function CandidateDetailPage({
   const overrideTargets = listManualOverrideTargets(application.status);
   const canSendInterviewOptions = canSendInterviewOptionsStatus(application.status);
   const canGenerateOffer = canGenerateOfferStatus(application.status);
+  const calendarConnection = getGoogleCalendarConnectionState();
   const pipelineStages = buildPipelineStages(application);
   const activityFeed = buildActivityFeed(application);
-  const automationRunning = isAutomationRunning(application);
+  const liveRefreshEnabled = shouldLiveRefresh(application);
   const screeningActivity = getLatestActivityNote(application, ["AI screening"]);
   const researchActivity = getLatestActivityNote(application, ["Candidate research"]);
-  const activeStageIndex = automationRunning
+  const firefliesActivity = getLatestActivityNote(application, ["Fireflies"]);
+  const activeStageIndex = liveRefreshEnabled
     ? pipelineStages.findIndex((stage) => !stage.complete)
     : -1;
 
@@ -327,7 +379,7 @@ export default async function CandidateDetailPage({
                     AI score: {application.aiScore}
                   </span>
                 ) : null}
-                <LiveRefresh enabled={automationRunning} intervalMs={2000} mode="inline" />
+                <LiveRefresh enabled={liveRefreshEnabled} intervalMs={2000} mode="inline" />
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
@@ -382,8 +434,8 @@ export default async function CandidateDetailPage({
             eyebrow="Pipeline overview"
             title="Live stage progress"
             description={
-              automationRunning
-                ? "The next incomplete step pulses while automation is still moving, and this page keeps syncing until the pipeline settles."
+              liveRefreshEnabled
+                ? "The next incomplete step pulses while automation, candidate actions, or external integrations can still change this record."
                 : "Each stage below reflects the latest recorded state for this candidate."
             }
           >
@@ -599,15 +651,35 @@ export default async function CandidateDetailPage({
                         {application.researchProfile.brief}
                       </p>
 
-                      <SimpleList
-                        emptyLabel="No public summaries were stored."
-                        items={[
-                          application.researchProfile.linkedinSummary,
-                          application.researchProfile.xSummary,
-                          application.researchProfile.githubSummary,
-                          application.researchProfile.portfolioSummary,
-                        ].filter((item): item is string => Boolean(item))}
-                      />
+                      <div className="grid gap-5">
+                        {[
+                          {
+                            label: "LinkedIn",
+                            value: application.researchProfile.linkedinSummary,
+                          },
+                          {
+                            label: "X",
+                            value: application.researchProfile.xSummary,
+                          },
+                          {
+                            label: "GitHub",
+                            value: application.researchProfile.githubSummary,
+                          },
+                          {
+                            label: "Portfolio",
+                            value: application.researchProfile.portfolioSummary,
+                          },
+                        ]
+                          .filter((item) => Boolean(item.value))
+                          .map((item) => (
+                            <div key={item.label}>
+                              <h4 className="text-sm font-semibold">{item.label}</h4>
+                              <p className="mt-2 text-sm leading-7 text-[var(--muted)]">
+                                {item.value}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
 
                       <div>
                         <h4 className="text-sm font-semibold">Sources</h4>
@@ -673,12 +745,32 @@ export default async function CandidateDetailPage({
                   <p className="eyebrow">Scheduling</p>
                   <h3 className="mt-3 text-lg font-semibold">Interview operations</h3>
                   <div className="mt-4 grid gap-5">
+                    {!calendarConnection.connected ? (
+                      <div className="rounded-[24px] bg-[var(--surface-muted)] p-5 text-sm">
+                        <p className="font-semibold">Google Calendar connection required</p>
+                        <p className="mt-3 leading-7 text-[var(--muted)]">
+                          {calendarConnection.reason === "service-account"
+                            ? "This workspace is still using service-account auth. Connect a real Google user calendar before sending interview options."
+                            : calendarConnection.reason === "missing-oauth-client"
+                              ? "Google OAuth client credentials are missing, so the real scheduling flow cannot start yet."
+                              : "Finish the Google Calendar approval flow once from this workspace. The connection will persist and shortlisted candidates will resume scheduling automatically."}
+                        </p>
+                        <div className="mt-4">
+                          <a className="button-primary" href={calendarConnection.connectUrl}>
+                            Connect Google Calendar
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="flex flex-wrap items-center gap-3">
-                      {canSendInterviewOptions ? (
+                      {canSendInterviewOptions && calendarConnection.connected ? (
                         <SendInterviewOptionsButton applicationId={application.id} />
                       ) : (
                         <p className="text-sm text-[var(--muted)]">
-                          Scheduling actions become available after the candidate is shortlisted.
+                          {canSendInterviewOptions
+                            ? "Scheduling actions become available as soon as Google Calendar is connected."
+                            : "Scheduling actions become available after the candidate is shortlisted."}
                         </p>
                       )}
 
@@ -767,12 +859,49 @@ export default async function CandidateDetailPage({
                     ) : null}
 
                     <div>
+                      <h4 className="text-sm font-semibold">Fireflies notetaker</h4>
+                      {application.interview?.meetingUrl ? (
+                        <div className="mt-3 grid gap-4">
+                          <div className="rounded-[24px] bg-[var(--surface-muted)] p-5 text-sm">
+                            <p className="font-semibold">Live meeting handoff</p>
+                            <p className="mt-3 leading-7 text-[var(--muted)]">
+                              {firefliesActivity ??
+                                "Fireflies can join any live Google Meet for this interview link. Start it once the call is live, then check status until a meeting ID appears below. If Fireflies misses the call, paste transcript or interview notes in the transcript panel to continue."}
+                            </p>
+                          </div>
+                          {application.interview.notetakerMeetingId ||
+                          application.interview.notetakerState ? (
+                            <div className="rounded-[24px] bg-[var(--surface-muted)] p-5 text-sm">
+                              <p className="font-semibold">Stored Fireflies state</p>
+                              <dl className="mt-3 grid gap-2 text-[var(--muted)]">
+                                <div className="flex items-center justify-between gap-3">
+                                  <dt>State</dt>
+                                  <dd>{application.interview.notetakerState ?? "Unknown"}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3">
+                                  <dt>Meeting ID</dt>
+                                  <dd>{application.interview.notetakerMeetingId ?? "Not captured yet"}</dd>
+                                </div>
+                              </dl>
+                            </div>
+                          ) : null}
+                          <InterviewNotetakerActions applicationId={application.id} />
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-[var(--muted)]">
+                          Fireflies becomes available once a real meeting link exists.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
                       <h4 className="text-sm font-semibold">Transcript</h4>
                       {application.interview ? (
                         <div className="mt-3 grid gap-4">
                           <TranscriptWebhookForm
                             applicationId={application.id}
                             className="gap-4"
+                            defaultMeetingId={application.interview.notetakerMeetingId}
                           />
                           {application.interview?.transcript ? (
                             <div className="rounded-[24px] bg-[var(--surface-muted)] p-5 text-sm">
@@ -939,6 +1068,10 @@ export default async function CandidateDetailPage({
                             <p className="mt-2 text-[var(--muted)]">
                               External ID: {item.externalId}
                             </p>
+                          ) : item.type === "SLACK_CONNECT_READY" ? (
+                            <p className="mt-2 text-[var(--muted)]">
+                              Candidate can continue Slack onboarding from the signed offer page.
+                            </p>
                           ) : (
                             <p className="mt-2 text-[var(--muted)]">
                               Event captured successfully.
@@ -1002,8 +1135,8 @@ export default async function CandidateDetailPage({
             Pipeline events, emails, and onboarding updates
           </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            {automationRunning
-              ? "The timeline updates while intake is still moving."
+            {liveRefreshEnabled
+              ? "The timeline updates while this candidate still has live external changes in flight."
               : "Every recorded pipeline event appears here in reverse chronological order."}
           </p>
 

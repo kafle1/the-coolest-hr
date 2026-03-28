@@ -52,6 +52,12 @@ type FirefliesGraphqlPayload<T> = {
   errors?: Array<{ message?: string }>;
 };
 
+function sleep(durationMs: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+}
+
 function normalizeMeetingLink(value: string) {
   const trimmed = value.trim();
 
@@ -62,6 +68,30 @@ function normalizeMeetingLink(value: string) {
     return url.toString().replace(/\/$/, "");
   } catch {
     return trimmed.replace(/\/$/, "");
+  }
+}
+
+async function readFirefliesFailureMessage(response: Response) {
+  const contentType = response.headers?.get?.("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as FirefliesGraphqlPayload<unknown>;
+      const message = payload.errors?.find((error) => error.message?.trim())?.message?.trim();
+
+      if (message) {
+        return message;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const message = (await response.text()).trim();
+    return message || null;
+  } catch {
+    return null;
   }
 }
 
@@ -83,8 +113,12 @@ async function requestFireflies<T>(
   });
 
   if (!response.ok) {
+    const detail = await readFirefliesFailureMessage(response);
+
     throw badRequest(
-      `Fireflies returned ${response.status} when ${failureAction}.`,
+      detail
+        ? `Fireflies returned ${response.status} when ${failureAction}: ${detail}`
+        : `Fireflies returned ${response.status} when ${failureAction}.`,
       "fireflies_request_failed",
     );
   }
@@ -143,6 +177,71 @@ class DirectTextTranscriptService implements TranscriptService {
 }
 
 class FirefliesTranscriptService implements TranscriptService {
+  private async findLiveMeetingByLinkOnce(input: { meetingLink: string }) {
+    const normalizedMeetingLink = normalizeMeetingLink(input.meetingLink);
+    const data = await requestFireflies<{
+      active_meetings?: Array<{
+        id?: string | null;
+        meeting_link?: string | null;
+        organizer_email?: string | null;
+        state?: string | null;
+        title?: string | null;
+      }>;
+    }>(`
+      query ActiveMeetings {
+        active_meetings {
+          id
+          meeting_link
+          organizer_email
+          state
+          title
+        }
+      }
+    `,
+    undefined,
+    "loading active meetings",
+    );
+
+    const meeting = data.active_meetings?.find(
+      (candidate) =>
+        candidate.id?.trim() &&
+        candidate.meeting_link &&
+        normalizeMeetingLink(candidate.meeting_link) === normalizedMeetingLink,
+    );
+
+    if (!meeting?.id || !meeting.meeting_link) {
+      return null;
+    }
+
+    return {
+      meetingLink: meeting.meeting_link,
+      organizerEmail: meeting.organizer_email,
+      providerMeetingId: meeting.id,
+      state: meeting.state,
+      title: meeting.title,
+    };
+  }
+
+  private async waitForLiveMeeting(
+    input: { meetingLink: string },
+    attempts = 4,
+    delayMs = 2_000,
+  ) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const meeting = await this.findLiveMeetingByLinkOnce(input);
+
+      if (meeting) {
+        return meeting;
+      }
+
+      if (attempt < attempts - 1) {
+        await sleep(delayMs);
+      }
+    }
+
+    return null;
+  }
+
   async startLiveMeetingCapture(input: {
     attendees: LiveMeetingAttendee[];
     durationMinutes: number;
@@ -198,7 +297,7 @@ class FirefliesTranscriptService implements TranscriptService {
       );
     }
 
-    const liveMeeting = await this.findLiveMeetingByLink({
+    const liveMeeting = await this.waitForLiveMeeting({
       meetingLink: normalizedMeetingLink,
     }).catch(() => null);
 
@@ -211,48 +310,7 @@ class FirefliesTranscriptService implements TranscriptService {
   }
 
   async findLiveMeetingByLink(input: { meetingLink: string }) {
-    const normalizedMeetingLink = normalizeMeetingLink(input.meetingLink);
-    const data = await requestFireflies<{
-      active_meetings?: Array<{
-        id?: string | null;
-        meeting_link?: string | null;
-        organizer_email?: string | null;
-        state?: string | null;
-        title?: string | null;
-      }>;
-    }>(`
-      query ActiveMeetings {
-        active_meetings {
-          id
-          meeting_link
-          organizer_email
-          state
-          title
-        }
-      }
-    `,
-    undefined,
-    "loading active meetings",
-    );
-
-    const meeting = data.active_meetings?.find(
-      (candidate) =>
-        candidate.id?.trim() &&
-        candidate.meeting_link &&
-        normalizeMeetingLink(candidate.meeting_link) === normalizedMeetingLink,
-    );
-
-    if (!meeting?.id || !meeting.meeting_link) {
-      return null;
-    }
-
-    return {
-      meetingLink: meeting.meeting_link,
-      organizerEmail: meeting.organizer_email,
-      providerMeetingId: meeting.id,
-      state: meeting.state,
-      title: meeting.title,
-    };
+    return this.findLiveMeetingByLinkOnce(input);
   }
 
   async retrieveTranscript(input: {

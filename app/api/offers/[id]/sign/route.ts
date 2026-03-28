@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { OnboardingEventType } from "@prisma/client";
 
 import { signOffer } from "@/lib/offers/service";
+import { getSlackCandidateConnectStartUrl } from "@/lib/slack/oauth";
 import { errorToStatusCode, getErrorMessage } from "@/lib/utils/errors";
 
 export async function POST(
@@ -32,9 +34,19 @@ export async function POST(
       signatureDataUrl: body.signatureDataUrl,
       signerIp,
     });
+    const hasSlackConnectReady = offer.application.onboardingEvents.some(
+      (event) => event.type === OnboardingEventType.SLACK_CONNECT_READY,
+    );
+    const onboardingUrl = hasSlackConnectReady
+      ? getSlackCandidateConnectStartUrl(offer.token)
+      : null;
 
     return NextResponse.json({
       ok: true,
+      message: onboardingUrl
+        ? "Offer signed successfully. Redirecting to Slack onboarding..."
+        : "Offer signed successfully.",
+      onboardingUrl,
       offer,
     });
   } catch (error) {

@@ -41,6 +41,7 @@ vi.mock("@/lib/research/service", () => ({
 
 vi.mock("@/lib/email/service", () => ({
   sendApplicationConfirmation: sendApplicationConfirmationMock,
+  sendInterviewConfirmationEmail: vi.fn(),
   sendInterviewRescheduleAlert: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: sendSchedulingOptionsEmailMock,
@@ -139,7 +140,7 @@ describe("runApplicationAutomation", () => {
       },
     });
 
-    const applicationId = await submitApplication(buildApplicationForm(role.id));
+    const { applicationId } = await submitApplication(buildApplicationForm(role.id));
     const savedApplication = await prisma.application.findUniqueOrThrow({
       where: { id: applicationId },
       include: {

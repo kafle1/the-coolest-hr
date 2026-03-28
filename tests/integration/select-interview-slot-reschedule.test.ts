@@ -15,6 +15,7 @@ const { confirmHoldEventMock, releaseHoldEventMock, sendInterviewRescheduleAlert
 
 vi.mock("@/lib/calendar/service", () => ({
   getCalendarService: () => ({
+    assertInterviewSchedulingReady: vi.fn(),
     findAvailableSlots: vi.fn(),
     createHoldEvent: vi.fn(),
     confirmHoldEvent: confirmHoldEventMock,
@@ -25,6 +26,7 @@ vi.mock("@/lib/calendar/service", () => ({
 
 vi.mock("@/lib/email/service", () => ({
   sendApplicationConfirmation: vi.fn(),
+  sendInterviewConfirmationEmail: vi.fn(),
   sendInterviewRescheduleAlert: sendInterviewRescheduleAlertMock,
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: vi.fn(),

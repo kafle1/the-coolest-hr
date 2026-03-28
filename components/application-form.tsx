@@ -15,6 +15,7 @@ export function ApplicationForm({
   initialRoleId?: string;
 }) {
   const [message, setMessage] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const defaultRoleId = initialRoleId ?? roles[0]?.id ?? "";
@@ -26,6 +27,7 @@ export function ApplicationForm({
         event.preventDefault();
         setError(null);
         setMessage(null);
+        setWarning(null);
 
         const form = event.currentTarget;
         const formData = new FormData(form);
@@ -63,6 +65,7 @@ export function ApplicationForm({
             const payload = (await response.json()) as {
               ok: boolean;
               message?: string;
+              warning?: string;
             };
 
             if (!response.ok) {
@@ -76,7 +79,11 @@ export function ApplicationForm({
               roleField.value = defaultRoleId;
             }
 
-            setMessage(payload.message ?? "Application submitted successfully.");
+            setMessage(
+              payload.message ??
+                "Application submitted successfully. We will update you by email.",
+            );
+            setWarning(payload.warning ?? null);
           } catch (submissionError) {
             setError(
               submissionError instanceof Error
@@ -131,10 +138,15 @@ export function ApplicationForm({
       </p>
 
       {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      {warning ? (
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {warning}
+        </p>
+      ) : null}
       {message ? <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
 
       <button className="button-primary w-full sm:w-fit" disabled={isPending} type="submit">
-        {isPending ? "Submitting..." : "Submit application"}
+        {isPending ? "Submitting application..." : "Submit application"}
       </button>
     </form>
   );

@@ -7,6 +7,7 @@ import { SectionCard } from "@/components/section-card";
 import { SendSchedulingNudgesButton } from "@/components/send-scheduling-nudges-button";
 import { StatusBadge } from "@/components/status-badge";
 import { listAdminApplications, listRoles } from "@/lib/applications/service";
+import { getGoogleCalendarConnectionState } from "@/lib/calendar/oauth-config";
 import { formatDateTime } from "@/lib/utils/format";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ export default async function AdminPage({
     listRoles(),
   ]);
   const automationRunning = applications.some(isApplicationAutomationRunning);
+  const calendarConnection = getGoogleCalendarConnectionState();
   const metrics = [
     {
       label: "Applications",
@@ -94,6 +96,39 @@ export default async function AdminPage({
         title="One operating view for the full hiring pipeline"
         description="Review intake, AI screening, research, scheduling, interview evidence, offers, and onboarding from a single dashboard built for fast operator decisions."
       >
+        <div className="mb-6">
+          <div className="surface-panel flex flex-col gap-4 p-5">
+            <div>
+              <p className="eyebrow">Google Calendar</p>
+              <p className="mt-3 text-base font-semibold">
+                {calendarConnection.connected
+                  ? "Real interview scheduling is connected."
+                  : "Real interview scheduling still needs Google user authorization."}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                {calendarConnection.connected
+                  ? calendarConnection.connectedEmail
+                    ? `Connected as ${calendarConnection.connectedEmail} on ${calendarConnection.calendarId}.`
+                    : `Connected calendar: ${calendarConnection.calendarId}.`
+                  : calendarConnection.reason === "service-account"
+                    ? "The workspace is still on service-account auth, which cannot send candidate invites or create real Google Meet links."
+                    : calendarConnection.reason === "missing-oauth-client"
+                      ? "Google OAuth client credentials are missing from the environment."
+                      : calendarConnection.reason === "missing-calendar-id"
+                        ? "Google authorization exists, but no writable calendar has been selected yet."
+                        : "Finish the Google approval flow once from this workspace and the connection will persist across database resets."}
+              </p>
+            </div>
+            {!calendarConnection.connected ? (
+              <div className="flex flex-wrap gap-3">
+                <a className="button-primary" href={calendarConnection.connectUrl}>
+                  Connect Google Calendar
+                </a>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <div className="mb-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {metrics.map((metric) => (

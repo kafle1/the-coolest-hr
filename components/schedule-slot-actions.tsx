@@ -13,6 +13,7 @@ export function ScheduleSlotActions({
   const router = useRouter();
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [meetingUrl, setMeetingUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -25,19 +26,28 @@ export function ScheduleSlotActions({
           onClick={() => {
             setError(null);
             setMessage(null);
+            setMeetingUrl(null);
 
             startTransition(async () => {
               try {
                 const response = await fetch(`/api/scheduling/select/${token}`, {
                   method: "POST",
                 });
-                const payload = (await response.json()) as { message?: string };
+                const payload = (await response.json()) as {
+                  message?: string;
+                  application?: {
+                    interview?: {
+                      meetingUrl?: string | null;
+                    } | null;
+                  } | null;
+                };
 
                 if (!response.ok) {
                   throw new Error(payload.message ?? "Unable to confirm slot.");
                 }
 
                 setMessage("Slot confirmed. Your interview invite is now scheduled.");
+                setMeetingUrl(payload.application?.interview?.meetingUrl ?? null);
                 router.refresh();
               } catch (submissionError) {
                 setError(
@@ -103,6 +113,16 @@ export function ScheduleSlotActions({
 
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      {meetingUrl ? (
+        <a
+          className="text-sm font-semibold text-[var(--accent)]"
+          href={meetingUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Open Google Meet
+        </a>
+      ) : null}
     </div>
   );
 }

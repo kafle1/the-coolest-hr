@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("@/lib/email/service", () => ({
   sendApplicationConfirmation: vi.fn().mockResolvedValue(undefined),
+  sendInterviewConfirmationEmail: vi.fn(),
   sendInterviewRescheduleAlert: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: vi.fn(),
@@ -116,7 +117,7 @@ describe("submitApplication with real PDF extraction", () => {
 
   it("stores extracted PDF text on the application", async () => {
     const role = await seedRole();
-    const applicationId = await submitApplication(
+    const { applicationId } = await submitApplication(
       buildApplicationForm(role.id, "real-pdf@example.com"),
     );
     const application = await prisma.application.findUniqueOrThrow({

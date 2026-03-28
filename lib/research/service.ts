@@ -32,7 +32,9 @@ export async function buildCandidateResearch(input: {
   const githubEvidence = await fetchGithubEvidence(input.portfolioUrl);
   const research = await ai.researchCandidate({
     ...input,
-    resumeSummary: [input.resumeSummary, githubEvidence.summary].filter(Boolean).join("\n"),
+    resumeSummary: [input.resumeSummary, githubEvidence.summary]
+      .filter(Boolean)
+      .join("\n"),
   });
 
   const sources = [
@@ -40,11 +42,17 @@ export async function buildCandidateResearch(input: {
     ...research.sources,
     ...githubEvidence.sources,
   ].filter(
-    (source, index, list) => list.findIndex((item) => item.url === source.url) === index,
+    (source, index, list) =>
+      list.findIndex((item) => item.url === source.url) === index,
   );
 
   return {
     ...research,
+    linkedinSummary:
+      research.linkedinSummary ??
+      (input.linkedinUrl
+        ? "Submitted LinkedIn profile was included in the research review."
+        : null),
     githubSummary: research.githubSummary ?? githubEvidence.summary,
     sources,
   };

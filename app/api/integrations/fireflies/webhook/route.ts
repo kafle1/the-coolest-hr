@@ -20,11 +20,7 @@ export async function POST(request: Request) {
       throw new Error("applicationId is required.");
     }
 
-    if (!providerMeetingId && !directText) {
-      throw new Error("Provide either providerMeetingId or directText.");
-    }
-
-    const application = await ingestTranscriptFromWebhook({
+    const result = await ingestTranscriptFromWebhook({
       applicationId,
       providerMeetingId,
       directText,
@@ -32,7 +28,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      application,
+      application: result.application,
+      message: result.message,
     });
   } catch (error) {
     const message = getErrorMessage(error, "Unable to ingest transcript.");

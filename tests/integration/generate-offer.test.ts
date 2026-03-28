@@ -14,6 +14,7 @@ vi.mock("@/lib/ai/service", () => ({
 
 vi.mock("@/lib/email/service", () => ({
   sendApplicationConfirmation: vi.fn(),
+  sendInterviewConfirmationEmail: vi.fn(),
   sendSchedulingOptionsEmail: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendInterviewRescheduleAlert: vi.fn(),

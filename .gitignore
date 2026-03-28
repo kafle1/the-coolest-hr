@@ -43,3 +43,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 niural-493c1d7b18a1.json
+data/google-calendar-oauth.json
+tmp/
+prisma/*.db
+.env

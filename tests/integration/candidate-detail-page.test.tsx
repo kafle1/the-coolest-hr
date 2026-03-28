@@ -3,6 +3,7 @@
 import {
   ActorType,
   ApplicationStatus,
+  HoldStatus,
   OfferStatus,
   OnboardingEventType,
   RoleStatus,
@@ -133,5 +134,91 @@ describe("CandidateDetailPage", () => {
     expect(markup).toContain("Detail Candidate");
     expect(markup).toContain("Live activity");
     expect(markup).toContain("Slack Invite Sent");
+  });
+
+  it("returns notFound cleanly when the candidate no longer exists", async () => {
+    await expect(
+      CandidateDetailPage({
+        params: Promise.resolve({ id: "missing-candidate-id" }),
+      }),
+    ).rejects.toThrow("notFound");
+  });
+
+  it("keeps live refresh enabled while interview confirmation is still pending", async () => {
+    const role = await prisma.role.create({
+      data: {
+        slug: "candidate-detail-refresh-role",
+        title: "AI Product Operator",
+        team: "Product",
+        location: "Nepal",
+        remoteStatus: "Remote",
+        experienceLevel: "Senior",
+        summary: "Detail role",
+        responsibilities: ["Ship tools"],
+        requirements: ["Write code"],
+        status: RoleStatus.OPEN,
+      },
+    });
+
+    const application = await prisma.application.create({
+      data: {
+        fullName: "Refresh Candidate",
+        email: "refresh@example.com",
+        linkedinUrl: "https://linkedin.com/in/refresh",
+        status: ApplicationStatus.INTERVIEW_PENDING,
+        roleId: role.id,
+        statusHistory: {
+          createMany: {
+            data: [
+              {
+                toStatus: ApplicationStatus.APPLIED,
+                actorType: ActorType.CANDIDATE,
+                actorLabel: "Refresh Candidate",
+                note: "Candidate submitted a new application.",
+              },
+              {
+                toStatus: ApplicationStatus.INTERVIEW_PENDING,
+                actorType: ActorType.SYSTEM,
+                actorLabel: "Scheduling",
+                note: "Interview options sent to candidate.",
+              },
+              {
+                toStatus: ApplicationStatus.INTERVIEW_PENDING,
+                actorType: ActorType.SYSTEM,
+                actorLabel: "Automation",
+                note: "Application automation completed.",
+              },
+            ],
+          },
+        },
+        interviewPlan: {
+          create: {
+            interviewerName: "Jordan Lee",
+            interviewerEmail: "jordan@example.com",
+            interviewerCalendarId: "calendar-id",
+            holds: {
+              create: {
+                token: "refresh-token",
+                startsAt: new Date("2026-03-30T04:15:00.000Z"),
+                endsAt: new Date("2026-03-30T05:00:00.000Z"),
+                expiresAt: new Date("2026-03-31T04:15:00.000Z"),
+                status: HoldStatus.HELD,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const markup = renderToStaticMarkup(
+      await CandidateDetailPage({
+        params: Promise.resolve({ id: application.id }),
+      }),
+    );
+
+    expect(markup).toContain("Watching for live updates");
+    expect(markup).toContain(
+      "automation, candidate actions, or external integrations can still change this record",
+    );
   });
 });

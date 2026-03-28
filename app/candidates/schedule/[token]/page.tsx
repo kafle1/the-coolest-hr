@@ -33,7 +33,9 @@ export default async function ScheduleTokenPage({
     notFound();
   }
 
+  const interview = hold.interviewPlan.application.interview;
   const canConfirm = hold.status === "HELD" && hold.expiresAt > new Date();
+  const isConfirmed = hold.status === "CONFIRMED" || Boolean(interview);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -44,22 +46,26 @@ export default async function ScheduleTokenPage({
       >
         <div className="grid gap-5 text-sm">
           <div className="surface-panel p-5">
-            <p className="eyebrow">
-              Proposed slot
-            </p>
+            <p className="eyebrow">{isConfirmed ? "Confirmed slot" : "Proposed slot"}</p>
             <p className="mt-2 text-2xl font-semibold">{formatDateTime(hold.startsAt)}</p>
             <p className="mt-2 text-[var(--muted)]">
-              Status: {hold.status}. This hold expires at {formatDateTime(hold.expiresAt)}.
+              {isConfirmed
+                ? "Your interview is confirmed."
+                : `Status: ${hold.status}. This hold expires at ${formatDateTime(hold.expiresAt)}.`}
             </p>
-            {hold.interviewPlan.application.interview?.meetingUrl ? (
+            {interview?.meetingUrl ? (
               <a
                 className="mt-4 inline-flex font-semibold text-[var(--accent)]"
-                href={hold.interviewPlan.application.interview.meetingUrl}
+                href={interview.meetingUrl}
                 target="_blank"
                 rel="noreferrer"
               >
                 Open meeting link
               </a>
+            ) : isConfirmed ? (
+              <p className="mt-4 text-sm text-[var(--muted)]">
+                Your confirmation email and calendar invite are on the way.
+              </p>
             ) : null}
           </div>
 

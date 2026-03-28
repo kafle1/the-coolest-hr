@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import {
   runApplicationAutomation,
@@ -25,27 +25,38 @@ export async function POST(request: Request) {
     console.info(
       `[hiring-os] ${new Date().toISOString()} intake="received" ip=${ip}`,
     );
-    const applicationId = await submitApplication(formData);
+    const { applicationId, confirmationEmailError } = await submitApplication(formData);
     console.info(
       `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="stored"`,
     );
-    await runApplicationAutomation(applicationId)
-      .then(() => {
+    after(async () => {
+      console.info(
+        `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="initial-automation-started"`,
+      );
+
+      try {
+        await runApplicationAutomation(applicationId);
         console.info(
           `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="initial-automation-finished"`,
         );
-      })
-      .catch((automationError) => {
+      } catch (automationError) {
+        const message =
+          automationError instanceof Error
+            ? automationError.message
+            : "Unknown automation error.";
         console.error(
-          `[hiring-os] ${new Date().toISOString()} application=${applicationId} automation="failed"`,
-          automationError,
+          `[hiring-os] ${new Date().toISOString()} application=${applicationId} intake="initial-automation-failed" message="${message.replaceAll('"', "'")}"`,
         );
-      });
+      }
+    });
 
     return NextResponse.json({
       ok: true,
       applicationId,
-      message: "Application received. We will email you as your application moves forward.",
+      message: confirmationEmailError
+        ? "Application submitted, but the confirmation email could not be delivered."
+        : "Application submitted successfully. We will update you by email.",
+      warning: confirmationEmailError ?? undefined,
     });
   } catch (error) {
     console.error("[hiring-os] intake request failed", error);

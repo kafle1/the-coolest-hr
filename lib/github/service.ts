@@ -1,3 +1,5 @@
+const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
+
 function extractGithubUsername(url?: string | null) {
   if (!url) {
     return null;
@@ -18,9 +20,19 @@ export async function fetchGithubEvidence(url?: string | null) {
   }
 
   try {
+    const requestInit = {
+      headers: {
+        "User-Agent": "Niural Hiring OS",
+      },
+      signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+    } satisfies RequestInit;
+
     const [profileResponse, reposResponse] = await Promise.all([
-      fetch(`https://api.github.com/users/${username}`),
-      fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=3`),
+      fetch(`https://api.github.com/users/${username}`, requestInit),
+      fetch(
+        `https://api.github.com/users/${username}/repos?sort=updated&per_page=3`,
+        requestInit,
+      ),
     ]);
 
     if (!profileResponse.ok || !reposResponse.ok) {

@@ -17,6 +17,9 @@ describe("FirefliesTranscriptService", () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 503,
+        headers: {
+          get: vi.fn().mockReturnValue(null),
+        },
       }),
     );
 
@@ -29,6 +32,34 @@ describe("FirefliesTranscriptService", () => {
         roleTitle: "AI Product Operator",
       }),
     ).rejects.toThrow("Fireflies returned 503 when fetching the transcript.");
+  });
+
+  it("includes the provider error message when Fireflies returns one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        headers: {
+          get: vi.fn().mockReturnValue("application/json"),
+        },
+        json: vi.fn().mockResolvedValue({
+          errors: [{ message: "Rate limit exceeded" }],
+        }),
+      }),
+    );
+
+    const { getTranscriptService } = await import("@/lib/fireflies/service");
+
+    await expect(
+      getTranscriptService().retrieveTranscript({
+        providerMeetingId: "meeting-123",
+        candidateName: "Candidate",
+        roleTitle: "AI Product Operator",
+      }),
+    ).rejects.toThrow(
+      "Fireflies returned 429 when fetching the transcript: Rate limit exceeded",
+    );
   });
 
   it("maps supported summary fields and transcript sentences into the stored payload", async () => {

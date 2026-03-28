@@ -20,6 +20,7 @@ vi.mock("@/lib/resume/extract-text", () => ({
 
 vi.mock("@/lib/email/service", () => ({
   sendApplicationConfirmation: sendApplicationConfirmationMock,
+  sendInterviewConfirmationEmail: vi.fn(),
   sendInterviewRescheduleAlert: vi.fn(),
   sendSchedulingNudgeEmail: vi.fn(),
   sendSchedulingOptionsEmail: vi.fn(),
@@ -114,7 +115,9 @@ describe("submitApplication", () => {
     const role = await seedRole();
     sendApplicationConfirmationMock.mockRejectedValueOnce(new Error("Resend is down"));
 
-    const applicationId = await submitApplication(buildApplicationForm(role.id));
+    const { applicationId, confirmationEmailError } = await submitApplication(
+      buildApplicationForm(role.id),
+    );
     const application = await prisma.application.findUniqueOrThrow({
       where: { id: applicationId },
       include: {
@@ -123,6 +126,7 @@ describe("submitApplication", () => {
     });
 
     expect(application.email).toBe("candidate@example.com");
+    expect(confirmationEmailError).toBe("Resend is down");
     expect(application.statusHistory.some((entry) => entry.actorLabel === "Confirmation email")).toBe(true);
   });
 });
