@@ -1,0 +1,309 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SCREENED
+  SHORTLISTED
+  INTERVIEW_PENDING
+  INTERVIEW_SCHEDULED
+  INTERVIEW_COMPLETED
+  OFFER_DRAFT
+  OFFER_SENT
+  OFFER_SIGNED
+  SLACK_INVITED
+  ONBOARDED
+  REJECTED
+}
+
+enum ActorType {
+  SYSTEM
+  ADMIN
+  CANDIDATE
+  INTEGRATION
+}
+
+enum HoldStatus {
+  HELD
+  CONFIRMED
+  RELEASED
+  EXPIRED
+  DECLINED
+}
+
+enum InterviewResponseStatus {
+  NEEDS_ACTION
+  ACCEPTED
+  DECLINED
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  SIGNED
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  PREVIEW
+  FAILED
+}
+
+enum OnboardingEventType {
+  SLACK_INVITE_SENT
+  SLACK_TEAM_JOIN
+  WELCOME_SENT
+  HR_NOTIFIED
+}
+
+model Role {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  team            String
+  location        String
+  remoteStatus    String
+  experienceLevel String
+  summary         String
+  responsibilities String[]
+  requirements    String[]
+  status          RoleStatus    @default(OPEN)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  applications    Application[]
+}
+
+model Application {
+  id             String            @id @default(cuid())
+  fullName       String
+  email          String
+  linkedinUrl    String
+  portfolioUrl   String?
+  status         ApplicationStatus @default(APPLIED)
+  aiScore        Int?
+  submittedAt    DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  roleId         String
+  role           Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  resumeAsset    ResumeAsset?
+  screeningResult ScreeningResult?
+  researchProfile ResearchProfile?
+  interviewPlan  InterviewPlan?
+  interview      Interview?
+  feedback       Feedback[]
+  offer          Offer?
+  statusHistory  StatusHistory[]
+  onboardingEvents OnboardingEvent[]
+  emailLogs      EmailLog[]
+
+  @@unique([email, roleId])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+model ResumeAsset {
+  id           String      @id @default(cuid())
+  applicationId String     @unique
+  application  Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  extractedText String?
+  createdAt    DateTime    @default(now())
+}
+
+model ScreeningResult {
+  id              String      @id @default(cuid())
+  applicationId   String      @unique
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  threshold       Int
+  score           Int
+  summary         String
+  strengths       String[]
+  gaps            String[]
+  parsedSkills    String[]
+  yearsExperience Int?
+  education       Json?
+  pastEmployers   String[]
+  achievements    String[]
+  autoShortlisted Boolean     @default(false)
+  rawResponse     Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model ResearchProfile {
+  id              String      @id @default(cuid())
+  applicationId   String      @unique
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  brief           String
+  linkedinSummary String?
+  xSummary        String?
+  githubSummary   String?
+  portfolioSummary String?
+  discrepancies   String[]
+  limitations     String[]
+  sources         Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model InterviewPlan {
+  id                  String           @id @default(cuid())
+  applicationId       String           @unique
+  application         Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interviewerName     String
+  interviewerEmail    String
+  interviewerCalendarId String
+  stageLabel          String           @default("Hiring Manager Interview")
+  lastOptionsSentAt   DateTime?
+  lastNudgeAt         DateTime?
+  candidateRequestNote String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  holds               InterviewSlotHold[]
+  interview           Interview?
+}
+
+model InterviewSlotHold {
+  id                  String       @id @default(cuid())
+  interviewPlanId     String
+  interviewPlan       InterviewPlan @relation(fields: [interviewPlanId], references: [id], onDelete: Cascade)
+  token               String       @unique
+  startsAt            DateTime
+  endsAt              DateTime
+  expiresAt           DateTime
+  status              HoldStatus   @default(HELD)
+  googleCalendarEventId String?
+  candidateMessage    String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([interviewPlanId, status])
+  @@index([startsAt, status])
+}
+
+model Interview {
+  id                    String                   @id @default(cuid())
+  applicationId         String                   @unique
+  interviewPlanId       String                   @unique
+  application           Application              @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interviewPlan         InterviewPlan            @relation(fields: [interviewPlanId], references: [id], onDelete: Cascade)
+  startsAt              DateTime
+  endsAt                DateTime
+  googleEventId         String?                  @unique
+  meetingUrl            String?
+  attendeeResponseStatus InterviewResponseStatus @default(NEEDS_ACTION)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  transcript            Transcript?
+  feedback              Feedback[]
+}
+
+model Transcript {
+  id             String      @id @default(cuid())
+  interviewId    String      @unique
+  interview      Interview   @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  provider       String
+  providerMeetingId String?
+  summary        String
+  bulletPoints   String[]
+  fullText       String
+  retrievedAt    DateTime
+  createdAt      DateTime    @default(now())
+}
+
+model Feedback {
+  id               String      @id @default(cuid())
+  applicationId    String
+  interviewId      String?
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interview        Interview?  @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  authorName       String
+  authorRole       String?
+  content          String
+  structuredNotes  Json?
+  flaggedPhrases   String[]
+  requiresAttention Boolean    @default(false)
+  createdAt        DateTime    @default(now())
+}
+
+model Offer {
+  id                 String      @id @default(cuid())
+  applicationId      String      @unique
+  application        Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  token              String      @unique
+  status             OfferStatus @default(DRAFT)
+  jobTitle           String
+  startDate          DateTime
+  baseSalary         String
+  compensationNotes  String?
+  equityBonus        String?
+  reportingManager   String
+  customTerms        String?
+  generatedContent   String
+  generatedHtml      String
+  sentAt             DateTime?
+  signedAt           DateTime?
+  signerName         String?
+  signerIp           String?
+  signatureDataUrl   String?
+  alertSentAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model OnboardingEvent {
+  id            String              @id @default(cuid())
+  applicationId String
+  application   Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type          OnboardingEventType
+  payload       Json?
+  externalId    String?
+  createdAt     DateTime            @default(now())
+
+  @@index([applicationId, type])
+}
+
+model StatusHistory {
+  id            String            @id @default(cuid())
+  applicationId String
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  actorType     ActorType
+  actorLabel    String
+  note          String?
+  createdAt     DateTime          @default(now())
+
+  @@index([applicationId, createdAt])
+}
+
+model EmailLog {
+  id                String              @id @default(cuid())
+  applicationId     String?
+  application       Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  toEmail           String
+  subject           String
+  bodyHtml          String
+  bodyText          String
+  templateKey       String
+  deliveryStatus    EmailDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  createdAt         DateTime            @default(now())
+}

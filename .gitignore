@@ -12,6 +12,9 @@
 
 # testing
 /coverage
+/test-results/
+/data/resumes/
+/data/offers/
 
 # next.js
 /.next/
@@ -39,3 +42,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+niural-493c1d7b18a1.json

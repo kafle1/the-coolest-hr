@@ -1,0 +1,213 @@
+import Link from "next/link";
+import { ApplicationStatus } from "@prisma/client";
+
+import { LiveRefresh } from "@/components/live-refresh";
+import { LogoutButton } from "@/components/logout-button";
+import { SectionCard } from "@/components/section-card";
+import { SendSchedulingNudgesButton } from "@/components/send-scheduling-nudges-button";
+import { StatusBadge } from "@/components/status-badge";
+import { listAdminApplications, listRoles } from "@/lib/applications/service";
+import { formatDateTime } from "@/lib/utils/format";
+
+export const dynamic = "force-dynamic";
+
+const statuses = Object.values(ApplicationStatus);
+const shortlistedOrLaterStatuses: ApplicationStatus[] = [
+  ApplicationStatus.SHORTLISTED,
+  ApplicationStatus.INTERVIEW_PENDING,
+  ApplicationStatus.INTERVIEW_SCHEDULED,
+  ApplicationStatus.INTERVIEW_COMPLETED,
+  ApplicationStatus.OFFER_DRAFT,
+  ApplicationStatus.OFFER_SENT,
+  ApplicationStatus.OFFER_SIGNED,
+  ApplicationStatus.SLACK_INVITED,
+  ApplicationStatus.ONBOARDED,
+];
+const actionableStatuses: ApplicationStatus[] = [
+  ApplicationStatus.INTERVIEW_PENDING,
+  ApplicationStatus.INTERVIEW_COMPLETED,
+  ApplicationStatus.OFFER_DRAFT,
+  ApplicationStatus.OFFER_SENT,
+  ApplicationStatus.SLACK_INVITED,
+];
+
+function isApplicationAutomationRunning(application: {
+  status: ApplicationStatus;
+  screeningResult: { id: string } | null;
+}) {
+  if (!application.screeningResult) {
+    return true;
+  }
+
+  return application.status === ApplicationStatus.SHORTLISTED;
+}
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    roleId?: string;
+    status?: ApplicationStatus;
+    startDate?: string;
+    endDate?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const [applications, roles] = await Promise.all([
+    listAdminApplications(params),
+    listRoles(),
+  ]);
+  const automationRunning = applications.some(isApplicationAutomationRunning);
+  const metrics = [
+    {
+      label: "Applications",
+      value: applications.length,
+      note: "All candidates in the current filter set",
+    },
+    {
+      label: "Intake running",
+      value: applications.filter((application) => !application.screeningResult).length,
+      note: "Applications that are still moving through screening",
+    },
+    {
+      label: "Shortlisted or later",
+      value: applications.filter((application) =>
+        shortlistedOrLaterStatuses.includes(application.status),
+      ).length,
+      note: "Candidates that cleared the first decision gate",
+    },
+    {
+      label: "Actionable now",
+      value: applications.filter((application) =>
+        actionableStatuses.includes(application.status),
+      ).length,
+      note: "Candidates likely to need a follow-up or review",
+    },
+  ];
+
+  return (
+    <div className="grid gap-8">
+      <LiveRefresh enabled={automationRunning} intervalMs={5000} />
+
+      <SectionCard
+        eyebrow="Admin dashboard"
+        title="One operating view for the full hiring pipeline"
+        description="Review intake, AI screening, research, scheduling, interview evidence, offers, and onboarding from a single dashboard built for fast operator decisions."
+      >
+        <div className="mb-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {metrics.map((metric) => (
+              <div key={metric.label} className="metric-card">
+                <p className="eyebrow">{metric.label}</p>
+                <p className="mt-3 text-3xl font-semibold">{metric.value}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{metric.note}</p>
+              </div>
+            ))}
+          </div>
+          <div className="surface-panel flex flex-col justify-between gap-4 p-5">
+            <div>
+              <p className="eyebrow">Automation</p>
+              <p className="mt-3 text-base font-semibold">
+                New applications start processing as soon as they are submitted.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                Open any candidate to watch live activity, inspect evidence, and step in only when the system raises an exception.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <SendSchedulingNudgesButton />
+              <div className="ml-auto">
+                <LogoutButton />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <form className="mb-6 grid gap-4 rounded-[24px] border border-[var(--border)] bg-[var(--surface-muted)] p-5 md:grid-cols-5">
+          <label className="grid gap-2 text-sm font-semibold">
+            Role
+            <select className="field" defaultValue={params.roleId ?? ""} name="roleId">
+              <option value="">All roles</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            Status
+            <select className="field" defaultValue={params.status ?? ""} name="status">
+              <option value="">All statuses</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            Start date
+            <input className="field" defaultValue={params.startDate} name="startDate" type="date" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            End date
+            <input className="field" defaultValue={params.endDate} name="endDate" type="date" />
+          </label>
+          <div className="flex items-end gap-3">
+            <button className="button-primary" type="submit">
+              Filter
+            </button>
+            <Link className="button-secondary" href="/admin">
+              Reset
+            </Link>
+          </div>
+        </form>
+
+        <div className="grid gap-3">
+          <div className="grid grid-cols-[1.35fr_1fr_0.95fr_0.65fr] gap-3 px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+            <span>Candidate</span>
+            <span>Pipeline</span>
+            <span>Submitted</span>
+            <span>AI score</span>
+          </div>
+          {applications.length === 0 ? (
+            <div className="surface-panel px-5 py-12 text-center text-sm text-[var(--muted)]">
+              No applications yet. Submit one from the public form to populate the pipeline.
+            </div>
+          ) : (
+            applications.map((application) => (
+              <Link
+                key={application.id}
+                href={`/admin/candidates/${application.id}`}
+                className="surface-panel grid gap-4 p-5 transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.06)] md:grid-cols-[1.35fr_1fr_0.95fr_0.65fr]"
+              >
+                <div>
+                  <p className="text-base font-semibold">{application.fullName}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{application.email}</p>
+                  <p className="mt-3 text-sm text-[var(--muted)]">
+                    {application.role.title}
+                  </p>
+                </div>
+                <div className="grid content-start gap-2">
+                  <StatusBadge value={application.status} />
+                  <p className="text-sm text-[var(--muted)]">
+                    {application.screeningResult
+                      ? "Screening is complete and evidence is attached."
+                      : "Intake automation is still processing this application."}
+                  </p>
+                </div>
+                <div className="text-sm text-[var(--muted)]">
+                  {formatDateTime(application.submittedAt)}
+                </div>
+                <div className="text-sm font-semibold">
+                  {application.aiScore ?? application.screeningResult?.score ?? "Pending"}
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
