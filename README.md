@@ -4,6 +4,8 @@ AI-assisted hiring pipeline that covers the full candidate lifecycle — public 
 
 Built as a working prototype for the Niural AI Product Operator take-home.
 
+![Careers page](docs/screenshot.png)
+
 ## What the prototype covers
 
 - Careers page with 3 seeded roles and full job descriptions
