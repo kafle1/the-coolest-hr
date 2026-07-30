@@ -1,6 +1,8 @@
-# Niural Candidate Onboarding System
+# The Coolest HR
 
-Working prototype for the Niural AI Product Operator take-home. The app covers the full candidate lifecycle from public job listing to Slack onboarding, with AI used where it creates real operator leverage instead of cosmetic automation.
+AI-assisted hiring pipeline that covers the full candidate lifecycle — public job listing, resume screening, interview scheduling, offer signing, Slack onboarding — with AI used where it creates real operator leverage instead of cosmetic automation.
+
+Built as a working prototype for the Niural AI Product Operator take-home.
 
 ## What the prototype covers
 
@@ -34,7 +36,7 @@ Working prototype for the Niural AI Product Operator take-home. The app covers t
 
 ## Local setup
 
-1. Copy the env file and fill in your AI provider key:
+1. Copy the example env file and fill in your AI provider key:
 
 ```bash
 cp .env.example .env
@@ -63,7 +65,7 @@ pnpm dev
 
 ## Demo reset
 
-If your local database has been altered by tests or manual exploration, use one of these before recording the walkthrough:
+If your local database has been altered by tests or manual exploration, use one of these to get back to the seeded baseline:
 
 ```bash
 pnpm db:seed
@@ -267,19 +269,11 @@ pnpm e2e
 
 `pnpm e2e` requires a local environment that allows Playwright to launch a browser. In restricted sandboxes, browser launch can fail even when the application itself builds and runs correctly.
 
-## Submission handoff
+## Further reading
 
-1. Run `pnpm db:seed` or `pnpm db:reset` on your local development database so the walkthrough starts from the intended demo state.
-2. Start the app locally or deploy it, then record the 10-15 minute Loom using the walkthrough script above.
-3. Share the repo link and Loom URL by email with the subject `AI Product Operator Assignment- [Your Name]`.
+- [`EDGE_CASES.md`](EDGE_CASES.md) — every handled edge case with the code path that handles it
+- [`SYSTEM_EXPLANATION.md`](SYSTEM_EXPLANATION.md) — architecture decisions, where AI adds value, and trade-offs
 
-## Submission checklist
+## License
 
-- [x] Working local prototype
-- [x] README with architecture, integration choices, edge cases, and trade-offs
-- [x] Edge case documentation (`EDGE_CASES.md`)
-- [x] System explanation with trade-offs (`SYSTEM_EXPLANATION.md`)
-- [x] Core verification (`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`)
-- [x] Demo database returned to the 3-role seeded baseline
-- [ ] Loom walkthrough (use the walkthrough script above)
-- [ ] Submission email sent with repo link and Loom URL
+MIT — see [LICENSE](LICENSE).
