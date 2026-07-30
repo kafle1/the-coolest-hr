@@ -1,6 +1,6 @@
 # The Coolest HR
 
-AI-assisted hiring pipeline that covers the full candidate lifecycle — public job listing, resume screening, interview scheduling, offer signing, Slack onboarding — with AI used where it creates real operator leverage instead of cosmetic automation.
+AI-assisted hiring pipeline that covers the full candidate lifecycle - public job listing, resume screening, interview scheduling, offer signing, Slack onboarding - with AI used where it creates real operator leverage instead of cosmetic automation.
 
 Built as a working prototype for the Niural AI Product Operator take-home.
 
@@ -238,26 +238,26 @@ This is the most important systems design piece.
 
 ## Edge cases handled
 
-1. **Duplicate applications** — Composite uniqueness on `email + roleId` prevents duplicate submissions. Orphaned resume files are cleaned up.
-2. **Invalid or oversized resumes** — Only PDF/DOCX accepted. Files over 5 MB rejected before storage.
-3. **Stale role submissions** — Backend re-checks role status at submit time.
-4. **Slot conflicts across candidates** — Serializable transactions with explicit overlap checks.
-5. **Calendar acceptance without email reply** — Tracked from Google Calendar invite status.
-6. **No-reply scheduling follow-up** — Idempotent 48-hour nudge per option batch.
-7. **Slack retries** — Repeated `team_join` events do not duplicate onboarding side effects.
-8. **Expired slot holds** — Automatic cleanup via expiration endpoint.
-9. **Admin auth bypass** — Next.js middleware intercepts all `/admin` and `/api/admin` routes before they execute.
-10. **Brute-force login** — Rate limited to 10 attempts per minute per IP.
-11. **Application spam** — Rate limited to 5 submissions per minute per IP.
+1. **Duplicate applications** - Composite uniqueness on `email + roleId` prevents duplicate submissions. Orphaned resume files are cleaned up.
+2. **Invalid or oversized resumes** - Only PDF/DOCX accepted. Files over 5 MB rejected before storage.
+3. **Stale role submissions** - Backend re-checks role status at submit time.
+4. **Slot conflicts across candidates** - Serializable transactions with explicit overlap checks.
+5. **Calendar acceptance without email reply** - Tracked from Google Calendar invite status.
+6. **No-reply scheduling follow-up** - Idempotent 48-hour nudge per option batch.
+7. **Slack retries** - Repeated `team_join` events do not duplicate onboarding side effects.
+8. **Expired slot holds** - Automatic cleanup via expiration endpoint.
+9. **Admin auth bypass** - Next.js middleware intercepts all `/admin` and `/api/admin` routes before they execute.
+10. **Brute-force login** - Rate limited to 10 attempts per minute per IP.
+11. **Application spam** - Rate limited to 5 submissions per minute per IP.
 
 ## Assumptions and trade-offs
 
-1. **Custom signing UI instead of DocuSign** — Keeps the entire offer flow demonstrable locally while still capturing signature image, signer IP, and timestamp. A production system would use DocuSign or Dropbox Sign for legal validity.
-2. **Service-account calendar access** — Faster and more reproducible for a take-home than building a full OAuth consent flow. A production system would use delegated credentials.
-3. **Credential-gated local fallbacks** — The system never dead-ends when optional credentials are missing. An AI provider key is the only required external dependency because AI is where the real value is.
-4. **Fireflies over other notetakers** — Chosen because transcript retrieval by meeting ID is the fastest to integrate. Read.ai and Fathom have limited public API access.
-5. **File-system resume storage** — Avoids cloud storage complexity for the take-home. A production system would use S3 or GCS.
-6. **Env-based admin credentials** — Simple and appropriate for a single-admin internal tool. A production system would use a proper auth provider (Auth0, NextAuth, etc.) with password hashing.
+1. **Custom signing UI instead of DocuSign** - Keeps the entire offer flow demonstrable locally while still capturing signature image, signer IP, and timestamp. A production system would use DocuSign or Dropbox Sign for legal validity.
+2. **Service-account calendar access** - Faster and more reproducible for a take-home than building a full OAuth consent flow. A production system would use delegated credentials.
+3. **Credential-gated local fallbacks** - The system never dead-ends when optional credentials are missing. An AI provider key is the only required external dependency because AI is where the real value is.
+4. **Fireflies over other notetakers** - Chosen because transcript retrieval by meeting ID is the fastest to integrate. Read.ai and Fathom have limited public API access.
+5. **File-system resume storage** - Avoids cloud storage complexity for the take-home. A production system would use S3 or GCS.
+6. **Env-based admin credentials** - Simple and appropriate for a single-admin internal tool. A production system would use a proper auth provider (Auth0, NextAuth, etc.) with password hashing.
 
 ## Verification
 
@@ -273,9 +273,9 @@ pnpm e2e
 
 ## Further reading
 
-- [`EDGE_CASES.md`](EDGE_CASES.md) — every handled edge case with the code path that handles it
-- [`SYSTEM_EXPLANATION.md`](SYSTEM_EXPLANATION.md) — architecture decisions, where AI adds value, and trade-offs
+- [`EDGE_CASES.md`](EDGE_CASES.md) - every handled edge case with the code path that handles it
+- [`SYSTEM_EXPLANATION.md`](SYSTEM_EXPLANATION.md) - architecture decisions, where AI adds value, and trade-offs
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
