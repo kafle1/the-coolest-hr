@@ -71,5 +71,5 @@ After offer signing and Slack join, AI generates a personalized onboarding DM wi
 3. **Production-grade auth and RBAC** for the admin dashboard instead of single-admin env credentials
 4. **Cron-based scheduling** for hold expiration and nudge processing
 5. **Webhook verification** for Fireflies (currently modeled but not cryptographically verified)
-6. **Distributed rate limiting** instead of the current in-memory limiter
+6. **A managed Redis** for the rate limiter. It already counts in Redis when `REDIS_URL` is set, and in memory otherwise
 7. **Background job queue** (e.g., Inngest, BullMQ) to decouple AI screening from the request cycle

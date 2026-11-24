@@ -16,7 +16,7 @@ Built as a working prototype for the Niural AI Product Operator take-home.
 - Admin hiring dashboard with filters, manual overrides, status history, and candidate detail pages
 - Session-based admin authentication with middleware-enforced route protection
 - Candidate-facing application status tracker
-- Rate limiting on public endpoints (application submission, login)
+- Rate limiting on public endpoints (application submission, status check, login), counted in Redis
 - Google Calendar scheduling flow with held slots, reschedules, and no-reply follow-up support
 - Transcript ingestion through Fireflies API or direct text input
 - Evidence-aware interviewer feedback review
@@ -48,6 +48,7 @@ cp .env.example .env
 
 2. Make sure PostgreSQL is available at the `DATABASE_URL` from `.env`.
    A local `docker-compose.yml` is included if you want Postgres in Docker.
+   It also has Redis for the rate limit counts: `docker compose up -d redis`, then set `REDIS_URL` in `.env`.
 
 3. Generate Prisma client, apply the schema, and seed roles:
 
@@ -116,6 +117,7 @@ pnpm db:reset
 | `SLACK_HR_CHANNEL_ID` | No | HR notification channel |
 | `SLACK_DEFAULT_CHANNEL_IDS` | No | Auto-join channels for new hires |
 | `FIREFLIES_API_KEY` | No | Fetches transcripts; direct text paste when missing |
+| `REDIS_URL` | No | Keeps rate limit counts in Redis; counts in memory when missing |
 | `ADMIN_EMAIL` | Yes | Admin login email for the protected workspace |
 | `ADMIN_PASSWORD` | Yes | Admin login password for the protected workspace |
 | `SESSION_SIGNING_SECRET` | Yes | HMAC secret for admin session cookies |
@@ -248,7 +250,7 @@ This is the most important systems design piece.
 8. **Expired slot holds** - Automatic cleanup via expiration endpoint.
 9. **Admin auth bypass** - Next.js middleware intercepts all `/admin` and `/api/admin` routes before they execute.
 10. **Brute-force login** - Rate limited to 10 attempts per minute per IP.
-11. **Application spam** - Rate limited to 5 submissions per minute per IP.
+11. **Application spam** - Rate limited to 5 submissions per minute per IP. Status checks are limited to 15 per minute per IP.
 
 ## Assumptions and trade-offs
 
