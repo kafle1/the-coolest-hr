@@ -1,43 +1,37 @@
-const store = new Map<string, number[]>();
+import { getRedis } from "@/lib/redis/client";
+import { AppError } from "@/lib/utils/errors";
 
-let pruneTimer: ReturnType<typeof setInterval> | null = null;
+// runs as one step inside redis, so two requests at once can't both take the last slot.
+// returns 0 when the request is allowed, otherwise the ms until a slot frees up.
+const SLIDING_WINDOW = `
+local time = redis.call('TIME')
+local now = time[1] * 1000 + math.floor(time[2] / 1000)
+local window = tonumber(ARGV[2])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
+if redis.call('ZCARD', KEYS[1]) < tonumber(ARGV[1]) then
+  redis.call('ZADD', KEYS[1], now, ARGV[3])
+  redis.call('PEXPIRE', KEYS[1], window)
+  return 0
+end
+return redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')[2] + window - now
+`;
 
-function ensurePruner(windowMs: number) {
-  if (pruneTimer) return;
+export async function checkRateLimit(key: string, maxRequests: number, windowMs: number) {
+  const retryAfterMs = await getRedis()
+    .eval(SLIDING_WINDOW, 1, `rl:${key}`, maxRequests, windowMs, crypto.randomUUID())
+    .catch((error) => {
+      console.error("[rate-limit] redis failed", error);
+      throw new AppError(
+        "The service is temporarily unavailable. Please try again shortly.",
+        503,
+        "rate_limit_unavailable",
+      );
+    });
 
-  pruneTimer = setInterval(() => {
-    const now = Date.now();
-
-    for (const [key, timestamps] of store) {
-      const filtered = timestamps.filter((t) => now - t < windowMs);
-
-      if (filtered.length === 0) {
-        store.delete(key);
-      } else {
-        store.set(key, filtered);
-      }
-    }
-  }, windowMs * 2);
-
-  if (typeof pruneTimer === "object" && "unref" in pruneTimer) {
-    pruneTimer.unref();
-  }
-}
-
-export function checkRateLimit(key: string, maxRequests: number, windowMs: number) {
-  ensurePruner(windowMs);
-  const now = Date.now();
-  const timestamps = (store.get(key) ?? []).filter((t) => now - t < windowMs);
-
-  if (timestamps.length >= maxRequests) {
-    store.set(key, timestamps);
-    return { success: false, remaining: 0 };
-  }
-
-  timestamps.push(now);
-  store.set(key, timestamps);
-
-  return { success: true, remaining: maxRequests - timestamps.length };
+  return {
+    success: retryAfterMs === 0,
+    retryAfterSeconds: Math.ceil(Number(retryAfterMs) / 1000),
+  };
 }
 
 export function getClientIp(request: Request): string {

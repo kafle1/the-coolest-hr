@@ -11,16 +11,17 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  const limit = checkRateLimit(`apply:${ip}`, 5, 60_000);
-
-  if (!limit.success) {
-    return NextResponse.json(
-      { ok: false, message: "Too many submissions. Please try again later." },
-      { status: 429 },
-    );
-  }
 
   try {
+    const limit = await checkRateLimit(`apply:${ip}`, 5, 60_000);
+
+    if (!limit.success) {
+      return NextResponse.json(
+        { ok: false, message: "Too many submissions. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+      );
+    }
+
     const formData = await request.formData();
     console.info(
       `[hiring-os] ${new Date().toISOString()} intake="received" ip=${ip}`,
