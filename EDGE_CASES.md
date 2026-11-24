@@ -58,10 +58,10 @@
 
 **Problem**: An attacker could attempt to guess admin credentials through rapid automated login attempts.
 
-**Solution**: The login endpoint is rate-limited to 10 attempts per minute per IP address. After exceeding the limit, all subsequent requests receive a `429 Too Many Requests` response until the window resets. The rate limiter uses a sliding window so the lockout decays naturally.
+**Solution**: The login endpoint is rate-limited to 10 attempts per minute per IP address. After exceeding the limit, all subsequent requests receive a `429 Too Many Requests` response until the window resets. The rate limiter uses a sliding window so the lockout decays naturally. Counts live in Redis, so a restart or a second server does not reset them.
 
 ## 11. Application submission spam
 
 **Problem**: Automated scripts could flood the application endpoint with fake submissions, consuming storage and AI screening resources.
 
-**Solution**: The public `POST /api/applications` endpoint is rate-limited to 5 submissions per minute per IP address. This is generous enough for legitimate use but blocks rapid automated submissions. The rate limiter runs in-memory with automatic cleanup to prevent unbounded memory growth.
+**Solution**: The public `POST /api/applications` endpoint is rate-limited to 5 submissions per minute per IP address. This is generous enough for legitimate use but blocks rapid automated submissions. The counts live in Redis and expire by themselves after the window. If Redis is unreachable the request fails with an error instead of going through unlimited.
