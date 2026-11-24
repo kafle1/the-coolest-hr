@@ -39,7 +39,7 @@ describe("POST /api/applications", () => {
   let scheduledAutomationTask: (() => Promise<void>) | null = null;
 
   beforeEach(() => {
-    checkRateLimitMock.mockReturnValue({ success: true });
+    checkRateLimitMock.mockResolvedValue({ success: true });
     getClientIpMock.mockReturnValue("127.0.0.1");
     submitApplicationMock.mockResolvedValue({
       applicationId: "application-123",

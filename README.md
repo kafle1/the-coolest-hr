@@ -16,7 +16,7 @@ Built as a working prototype for the Niural AI Product Operator take-home.
 - Admin hiring dashboard with filters, manual overrides, status history, and candidate detail pages
 - Session-based admin authentication with middleware-enforced route protection
 - Candidate-facing application status tracker
-- Rate limiting on public endpoints (application submission, login)
+- Rate limiting on public endpoints (application submission, status check, login), counted in Redis
 - Google Calendar scheduling flow with held slots, reschedules, and no-reply follow-up support
 - Transcript ingestion through Fireflies API or direct text input
 - Evidence-aware interviewer feedback review
@@ -46,8 +46,8 @@ cp .env.example .env
 # Also set ADMIN_EMAIL, ADMIN_PASSWORD, and SESSION_SIGNING_SECRET for the admin workspace
 ```
 
-2. Make sure PostgreSQL is available at the `DATABASE_URL` from `.env`.
-   A local `docker-compose.yml` is included if you want Postgres in Docker.
+2. Make sure PostgreSQL is available at the `DATABASE_URL` and Redis at the `REDIS_URL` from `.env`.
+   A local `docker-compose.yml` is included if you want both in Docker: `pnpm db:up`.
 
 3. Generate Prisma client, apply the schema, and seed roles:
 
@@ -86,6 +86,7 @@ pnpm db:reset
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | Yes | Redis connection string, holds the rate limit counts |
 | `NEXT_PUBLIC_APP_URL` | Yes | Canonical app URL used for links, callbacks, and public flows |
 | `AI_PROVIDER` | No | `auto` by default; prefers OpenRouter when `OPENROUTER_API_KEY` is set |
 | `OPENROUTER_API_KEY` | No | Powers all AI features through OpenRouter |
@@ -248,7 +249,7 @@ This is the most important systems design piece.
 8. **Expired slot holds** - Automatic cleanup via expiration endpoint.
 9. **Admin auth bypass** - Next.js middleware intercepts all `/admin` and `/api/admin` routes before they execute.
 10. **Brute-force login** - Rate limited to 10 attempts per minute per IP.
-11. **Application spam** - Rate limited to 5 submissions per minute per IP.
+11. **Application spam** - Rate limited to 5 submissions per minute per IP. Status checks are limited to 15 per minute per IP.
 
 ## Assumptions and trade-offs
 
