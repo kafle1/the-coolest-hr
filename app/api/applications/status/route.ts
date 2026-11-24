@@ -5,12 +5,12 @@ import { checkRateLimit, getClientIp } from "@/lib/utils/rate-limit";
 
 export async function GET(request: Request) {
   const ip = getClientIp(request);
-  const limit = checkRateLimit(`status:${ip}`, 15, 60_000);
+  const limit = await checkRateLimit(`status:${ip}`, 15, 60_000);
 
   if (!limit.success) {
     return NextResponse.json(
       { ok: false, message: "Too many requests. Please try again later." },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
     );
   }
 
