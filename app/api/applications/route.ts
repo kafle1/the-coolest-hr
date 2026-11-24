@@ -11,12 +11,12 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  const limit = await checkRateLimit(`apply:${ip}`, 5, 60_000);
+  const limit = checkRateLimit(`apply:${ip}`, 5, 60_000);
 
   if (!limit.success) {
     return NextResponse.json(
       { ok: false, message: "Too many submissions. Please try again later." },
-      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+      { status: 429 },
     );
   }
 

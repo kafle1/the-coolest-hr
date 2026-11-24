@@ -191,7 +191,6 @@ export const env = {
   firefliesApiKey: process.env.FIREFLIES_API_KEY ?? "",
   adminEmail: process.env.ADMIN_EMAIL?.trim() ?? "",
   adminPassword: process.env.ADMIN_PASSWORD ?? "",
-  redisUrl: process.env.REDIS_URL?.trim() ?? "",
 };
 
 export function requireValue(name: string, value: string) {
